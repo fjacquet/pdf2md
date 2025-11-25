@@ -1,0 +1,39 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - gocritic
+    - revive
+    - gofumpt
+    - gosec
+    - misspell
+    - unconvert
+    - unparam
+
+linters-settings:
+  gofumpt:
+    extra-rules: true
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+      - name: package-comments
+        severity: warning
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - whyNoLint
