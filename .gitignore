@@ -32,3 +32,10 @@ internal/testdata/*.pdf
 # Output files
 *.md.bak
 output/
+output*.md
+debug_*.txt
+*.log
+test_output*.txt
+
+# External Benchmarks
+READoc/

@@ -20,25 +20,18 @@ func main() {
 	pdfPath := os.Args[1]
 
 	// Step 1: Open the PDF file
-	file, err := os.Open(pdfPath)
-	if err != nil {
-		log.Fatalf("Failed to open PDF: %v", err)
-	}
-	defer file.Close()
-
 	// Step 2: Create and initialize the PDF extractor
-	ext := extractor.NewLedongthucExtractor()
-	if err := ext.Open(file); err != nil {
+	// Initialize the extractor
+	ext, err := extractor.NewCustomExtractor(pdfPath)
+	if err != nil {
 		log.Fatalf("Failed to initialize PDF extractor: %v", err)
 	}
 	defer ext.Close()
 
 	fmt.Printf("PDF has %d pages\n", ext.GetPageCount())
 
-	// Step 3: Create layout analyzer with custom settings
+	// Step 3: Create layout analyzer
 	analyzer := layout.NewAnalyzer()
-	analyzer.ColumnGapThreshold = 50.0 // Adjust for your PDFs
-	analyzer.HeaderSizeRatio = 1.3     // Adjust header detection sensitivity
 
 	// Step 4: Create markdown builder
 	builder := markdown.NewBuilder()

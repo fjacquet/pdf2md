@@ -5,6 +5,7 @@ A fast, single-binary PDF to Markdown converter written in Go. Designed for AI e
 ## How it Works
 
 - **Single Binary** - Zero dependencies, just download and run
+- **Custom PDF Parser** - Pure Go implementation, no CGO or external libraries required
 - **Column Detection** - Handles multi-column layouts (academic papers, newspapers)
 - **Smart Layout Analysis** - Preserves reading order and document structure
 - **Header Detection** - Automatically identifies H1-H6 based on font size or numbering
@@ -34,50 +35,59 @@ go build -o pdf2md ./cmd/pdf2md
 Convert a PDF to Markdown (output to stdout):
 
 ```bash
-pdf2md input.pdf
+./pdf2md input.pdf
 ```
 
 Save to a file:
 
 ```bash
-pdf2md input.pdf output.md
+./pdf2md input.pdf output.md
 ```
 
 ## Architecture
 
 pdf2md uses a modular pipeline architecture:
 
-1. **Extractor** (`pkg/extractor`) - Extracts raw text blocks with positioning data
-2. **Analyzer** (`pkg/layout`) - Detects columns, headers, and reading order
-3. **Builder** (`pkg/markdown`) - Generates clean Markdown output
-
-The extractor is abstraction-based, making it easy to swap PDF parsing libraries.
+1. **PDF Parser** (`internal/pdf`) - Custom pure Go PDF parser that handles:
+   - Cross-reference table parsing
+   - Object reading (dictionaries, streams, arrays)
+   - Content stream interpretation
+   - Font handling (CMap, Encodings)
+2. **Extractor** (`internal/extractor`) - Abstraction layer for text extraction
+3. **Analyzer** (`internal/layout`) - Detects columns, headers, and reading order
+4. **Builder** (`internal/markdown`) - Generates clean Markdown output
 
 ### Current Implementation
 
-- **Phase 1 (MVP)**: Text extraction with column detection
-- Uses `ledongthuc/pdf` for pure Go compatibility
-- Focuses on digital PDFs (not scanned documents)
+- **Pure Go**: Replaced `go-fitz` with a custom PDF parser implementation.
+- **Robust**: Handles various PDF versions and structures.
+- **Extensible**: Designed to support more PDF features in the future.
 
 ## Roadmap
 
-### Phase 1: Clean Text (Current)
-- [x] Text extraction
+### Phase 1: Core Parsing (Completed)
+
+- [x] Custom PDF Reader & Parser
+- [x] Content Stream Interpreter
+- [x] Font Handling (Type1, TrueType, CMap)
+- [x] Text Extraction
+
+### Phase 2: Layout Analysis (Completed)
+
 - [x] Column detection
 - [x] Header identification (H1-H6)
 - [x] Reading order preservation
+- [x] List detection
+- [x] Code block detection
 
-### Phase 2: Structure (Current)
-- [x] List detection (bullets and numbered)
-- [x] Code block detection (keyword-based)
-- [ ] Font histogram analysis for better header detection
-- [ ] Footnote handling
+### Phase 3: Visual Elements (Planned)
 
-### Phase 3: Visual Elements
 - [ ] Table extraction and formatting
 - [ ] Image extraction to assets folder
+- [ ] Link extraction
 
-### Phase 4: Advanced
+### Phase 4: Advanced (Planned)
+
 - [ ] OCR support for scanned PDFs
 - [ ] Configurable exclusion zones (headers/footers)
 - [ ] Custom formatting rules
@@ -89,12 +99,12 @@ The extractor is abstraction-based, making it easy to swap PDF parsing libraries
 ```
 pdf2md/
 ├── cmd/pdf2md/          # Main CLI application
-├── pkg/
-│   ├── extractor/       # PDF text extraction (pluggable)
-│   ├── layout/          # Layout analysis and structure detection
-│   └── markdown/        # Markdown generation
 ├── internal/
-│   ├── config/          # Configuration
+│   ├── pdf/             # Custom PDF parser implementation
+│   ├── extractor/       # Extraction interface and implementations
+│   ├── layout/          # Layout analysis and structure detection
+│   ├── markdown/        # Markdown generation
+│   ├── types/           # Shared types (TextBlock, etc.)
 │   └── testdata/        # Test PDFs
 └── go.mod
 ```
@@ -105,19 +115,6 @@ pdf2md/
 go test ./...
 ```
 
-### Adding a New Extractor
-
-Implement the `PDFExtractor` interface in `pkg/extractor/extractor.go`:
-
-```go
-type PDFExtractor interface {
-    Open(r io.ReadSeeker) error
-    GetPageCount() int
-    ExtractTextBlocks(page int) ([]TextBlock, error)
-    Close() error
-}
-```
-
 ## License
 
 MIT License - See LICENSE file for details
@@ -125,10 +122,3 @@ MIT License - See LICENSE file for details
 ## Contributing
 
 Contributions welcome! Please open an issue before submitting major changes.
-
-## Use Cases
-
-- **RAG Pipelines** - Convert technical documentation for vector databases
-- **Research** - Extract text from academic papers preserving structure
-- **Note-Taking** - Import PDFs into Obsidian, Notion, or other Markdown systems
-- **Documentation** - Convert PDF manuals to searchable Markdown

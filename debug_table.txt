@@ -1,1 +1,0 @@
-Successfully converted internal/testdata/test.pdf to output.md

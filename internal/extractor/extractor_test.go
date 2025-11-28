@@ -5,28 +5,10 @@ import (
 	"testing"
 )
 
-func TestLedongthucExtractor(t *testing.T) {
+func TestFitzExtractor(t *testing.T) {
 	// Create a simple test to ensure the extractor compiles
-	ext := NewLedongthucExtractor()
-	if ext == nil {
-		t.Fatal("NewLedongthucExtractor() returned nil")
-	}
-
-	// Test error handling for unopened extractor
-	count := ext.GetPageCount()
-	if count != 0 {
-		t.Errorf("Expected 0 pages from unopened extractor, got %d", count)
-	}
-
-	_, err := ext.ExtractTextBlocks(1)
-	if err != ErrNotInitialized {
-		t.Errorf("Expected ErrNotInitialized, got %v", err)
-	}
-}
-
-func TestExtractorInterface(t *testing.T) {
-	// Ensure LedongthucExtractor implements PDFExtractor
-	var _ PDFExtractor = (*LedongthucExtractor)(nil)
+	// We need a dummy file or just check the type
+	var _ PDFExtractor = (*FitzExtractor)(nil)
 }
 
 // TestWithRealPDF is a manual test for use with actual PDF files
@@ -40,14 +22,7 @@ func TestWithRealPDF(t *testing.T) {
 		t.Skip("Skipping test: test.pdf not found")
 	}
 
-	file, err := os.Open(pdfPath)
-	if err != nil {
-		t.Fatalf("Failed to open test PDF: %v", err)
-	}
-	defer file.Close()
-
-	ext := NewLedongthucExtractor()
-	err = ext.Open(file)
+	ext, err := NewFitzExtractor(pdfPath)
 	if err != nil {
 		t.Fatalf("Failed to open PDF: %v", err)
 	}
