@@ -80,10 +80,10 @@ pdf2md uses a modular pipeline architecture:
 - [x] List detection
 - [x] Code block detection
 
-### Phase 3: Visual Elements (Planned)
+### Phase 3: Visual Elements (In Progress)
 
-- [ ] Table extraction and formatting
-- [ ] Image extraction to assets folder
+- [x] Table extraction and formatting (Basic implementation)
+- [x] Image extraction to assets folder
 - [ ] Link extraction
 
 ### Phase 4: Advanced (Planned)
