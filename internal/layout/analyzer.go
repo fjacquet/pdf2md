@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/fjacquet/pdf2md/internal/extractor"
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 // Element represents a logical document element (header, paragraph, etc.)
@@ -30,6 +31,7 @@ const (
 	ElementTypeList       ElementType = "list"
 	ElementTypeTable      ElementType = "table"
 	ElementTypeAdmonition ElementType = "admonition"
+	ElementTypeImage      ElementType = "image"
 )
 
 // Rule defines a classification rule for the layout analyzer
@@ -111,13 +113,13 @@ func NewAnalyzer() *Analyzer {
 }
 
 // Analyze converts raw text blocks into structured elements
-func (a *Analyzer) Analyze(blocks []extractor.TextBlock) []Element {
-	if len(blocks) == 0 {
+func (a *Analyzer) Analyze(blocks []extractor.TextBlock, images []extractor.Image, graphics []types.VectorGraphic) []Element {
+	if len(blocks) == 0 && len(images) == 0 && len(graphics) == 0 {
 		return nil
 	}
 
-	// Step 1: Use blocks directly (assuming extractor provides reasonable order)
-	orderedBlocks := blocks
+	// Step 1: Sort blocks using Recursive XY-Cut (Column Detection)
+	orderedBlocks := SortBlocks(blocks)
 
 	// Step 3: Detect body font size (most common)
 	bodyFontSize := a.detectBodyFontSize(orderedBlocks)
@@ -125,21 +127,56 @@ func (a *Analyzer) Analyze(blocks []extractor.TextBlock) []Element {
 	// Step 4: Convert blocks to initial elements (all paragraphs initially)
 	elements := a.blocksToElements(orderedBlocks)
 
+	// Step 4.5: Add images to elements
+	for _, img := range images {
+		elements = append(elements, Element{
+			Type:    ElementTypeImage,
+			Content: img.ID, // Use ID as content for now, or path later
+			X:       img.X,
+			Y:       img.Y,
+			Width:   img.Width,
+			Height:  img.Height,
+		})
+	}
+
+	// Step 4.6: Add vector graphics to elements
+	for _, vg := range graphics {
+		elements = append(elements, Element{
+			Type:    ElementTypeImage, // Treat as image for now
+			Content: vg.ID,
+			X:       vg.X,
+			Y:       vg.Y,
+			Width:   vg.Width,
+			Height:  vg.Height,
+		})
+	}
+
 	// Step 5: Merge consecutive elements on same line
 	elements = a.MergeElements(elements)
 
 	// Step 6: Classify elements
 	var prev *Element
 	for i := range elements {
+		// Skip classification for images
+		if elements[i].Type == ElementTypeImage {
+			continue
+		}
 		a.classifyElement(&elements[i], prev, bodyFontSize)
 		prev = &elements[i]
 	}
+
+	// Step 5.5: Merge consecutive paragraph lines (vertical merge)
+	// Moved after classification to prevent merging Headers/CodeBlocks with Paragraphs
+	elements = a.MergeParagraphLines(elements)
 
 	// Step 7: Merge consecutive code blocks (vertical)
 	elements = a.MergeCodeBlocks(elements)
 
 	// Step 8: Merge consecutive table rows
 	elements = a.MergeTableRows(elements)
+
+	// Step 9: Clean math symbols
+	elements = a.CleanMathSymbols(elements)
 
 	return elements
 }
@@ -179,7 +216,9 @@ func (a *Analyzer) blocksToElements(blocks []extractor.TextBlock) []Element {
 		content := block.Text
 
 		// Apply formatting based on font name
-		if isBold(block.FontName) {
+		if isMathFont(block.FontName) {
+			content = "$" + content + "$"
+		} else if isBold(block.FontName) {
 			content = "**" + content + "**"
 		} else if isItalic(block.FontName) {
 			content = "*" + content + "*"
@@ -465,31 +504,76 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 			gap := next.X - (current.X + current.Width)
 
 			// If gap is small (relative to font size or absolute), don't add space
-			// Using a heuristic here: if gap is less than 20% of font size, assume it's part of the same word
+			// Using a heuristic here: if gap is less than 10% of font size, assume it's part of the same word
 			// Or if gap is negative (overlap)
-			threshold := current.FontSize * 0.2
+			threshold := current.FontSize * 0.1
 			if threshold == 0 {
-				threshold = 2.0 // Fallback
+				threshold = 1.0 // Fallback
 			}
 
 			// Determine threshold for "wide gap"
 			// If FontSize is available, use relative. Otherwise use absolute.
-			wideGapThreshold := 30.0 // Increased from 20.0
+			// Increased to 3.0x to avoid false positives for tables (was 2.0x)
+			wideGapThreshold := 30.0
 			if current.FontSize > 0 {
 				wideGapThreshold = current.FontSize * 3.0
 			}
 
 			if gap < threshold {
-				current.Content += next.Content
+				current.Content = mergeWithStyle(current.Content, next.Content)
 				// Update width
 				current.Width = next.X + next.Width - current.X
 			} else if gap > wideGapThreshold {
-				// Wide gap, likely a table column or visual separation
-				// Do NOT merge. Treat as separate elements.
-				merged = append(merged, current)
-				current = next
+				// Wide gap, likely a table column.
+				// Check if content is long (likely text columns, not table)
+				if len(current.Content) > 40 || len(next.Content) > 40 {
+					// Don't merge, treat as separate blocks
+					merged = append(merged, current)
+					current = next
+				} else {
+					// Check for Equation Numbering (e.g. "(1)", "(2.1)")
+					// If the right side is just a number in parens, treat as Equation, not Table.
+					isEqNum := false
+					trimmedNext := strings.TrimSpace(next.Content)
+					if strings.HasPrefix(trimmedNext, "(") && strings.HasSuffix(trimmedNext, ")") {
+						// Check content inside
+						inner := trimmedNext[1 : len(trimmedNext)-1]
+						// Allow digits and dots
+						isEqNum = true
+						for _, r := range inner {
+							if !unicode.IsDigit(r) && r != '.' {
+								isEqNum = false
+								break
+							}
+						}
+					}
+
+					if isEqNum {
+						// Merge with space (or special separator?)
+						// Just space to keep it as text/paragraph
+						current.Content = mergeWithStyle(current.Content, " "+next.Content)
+						current.Width = next.X + next.Width - current.X
+					} else {
+						// Merge with 4 spaces to allow table detection.
+						current.Content += "    " + next.Content
+						current.Width = next.X + next.Width - current.X
+					}
+				}
 			} else {
-				current.Content += " " + next.Content
+				// Regular gap (space)
+
+				// Check for Hyphenation
+				// If current ends with "-" and gap is not huge, merge without space.
+				// This fixes "sur- geons" -> "sur-geons"
+				if strings.HasSuffix(current.Content, "-") || strings.HasSuffix(current.Content, "‐") {
+					// Check if next starts with lowercase (optional, but safer)
+					// Actually, just merging is usually safe for hyphens in this context.
+					// But let's ensure gap isn't massive (it's already < wideGapThreshold)
+					current.Content = mergeWithStyle(current.Content, next.Content)
+				} else {
+					current.Content = mergeWithStyle(current.Content, " "+next.Content)
+				}
+
 				// Update width
 				current.Width = next.X + next.Width - current.X
 			}
@@ -504,6 +588,30 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 	merged = append(merged, current)
 
 	return merged
+}
+
+// mergeWithStyle merges two strings, handling markdown style markers (bold/italic)
+// to avoid artifacts like "**A****B**" -> "**AB**"
+func mergeWithStyle(a, b string) string {
+	separator := ""
+	cleanB := b
+	if strings.HasPrefix(b, " ") {
+		separator = " "
+		cleanB = b[1:]
+	}
+
+	// Check bold
+	if strings.HasSuffix(a, "**") && strings.HasPrefix(cleanB, "**") {
+		// a = "...**", cleanB = "**..."
+		// Result: "... " + "..." (merged)
+		return a[:len(a)-2] + separator + cleanB[2:]
+	}
+	// Check italic
+	if strings.HasSuffix(a, "*") && strings.HasPrefix(cleanB, "*") {
+		return a[:len(a)-1] + separator + cleanB[1:]
+	}
+
+	return a + b
 }
 
 // MergeCodeBlocks merges consecutive code block elements into a single block
@@ -664,4 +772,39 @@ func (a *Analyzer) MergeParagraphLines(elements []Element) []Element {
 	merged = append(merged, *current)
 
 	return merged
+}
+
+// CleanMathSymbols merges consecutive math symbols to improve readability
+// e.g. "$n$" "$n$" -> "$n$"
+func (a *Analyzer) CleanMathSymbols(elements []Element) []Element {
+	for i := range elements {
+		if elements[i].Type == ElementTypeParagraph || elements[i].Type == ElementTypeHeader {
+			text := elements[i].Content
+			// Simple heuristic: replace "$ $" with "" (merge) if it looks like same symbol repetition?
+			// Or just merge any "$ $"?
+			// The issue is "$n$ $n$" -> "$n$".
+			// But "$a$ $b$" -> "$ab$"? Maybe we want "$a b$"?
+			// The extractor output for 1004.3799 has "$n$ $n$" for "$n$".
+			// This likely means duplicate text blocks were extracted.
+
+			// Let's try to merge identical adjacent math blocks.
+			// Regex replacement is hard here.
+			// Let's iterate words.
+
+			// Actually, let's just fix the specific artifact "$n$ $n$" -> "$n$"
+			// And generally "$x$ $x$" -> "$x$"
+
+			parts := strings.Split(text, " ")
+			var newParts []string
+			for j := 0; j < len(parts); j++ {
+				if j > 0 && parts[j] == parts[j-1] && strings.HasPrefix(parts[j], "$") && strings.HasSuffix(parts[j], "$") {
+					// Duplicate math symbol, skip
+					continue
+				}
+				newParts = append(newParts, parts[j])
+			}
+			elements[i].Content = strings.Join(newParts, " ")
+		}
+	}
+	return elements
 }

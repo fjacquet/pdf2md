@@ -6,7 +6,7 @@ import (
 )
 
 func TestReader(t *testing.T) {
-	path := "../../internal/testdata/test.pdf"
+	path := "../../testdata/test.pdf"
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Skip("Skipping test: test.pdf not found")
 	}
@@ -90,11 +90,11 @@ func TestReader(t *testing.T) {
 				}
 			}
 
-			// Interpret Content
-			interpreter := NewInterpreter(fm)
-			blocks, err := interpreter.Process(content)
+			// Process
+			interpreter := NewInterpreter(nil, nil)
+			blocks, _, _, err := interpreter.Process(content)
 			if err != nil {
-				t.Errorf("Failed to interpret content: %v", err)
+				t.Fatalf("Process failed: %v", err)
 			} else {
 				t.Logf("Extracted %d text blocks", len(blocks))
 				if len(blocks) > 0 {

@@ -27,7 +27,7 @@ go.work
 Thumbs.db
 
 # Test data (keep directory structure)
-internal/testdata/*.pdf
+testdata/*.pdf
 
 # Output files
 *.md.bak
@@ -39,3 +39,7 @@ test_output*.txt
 
 # External Benchmarks
 READoc/
+
+# test work directory
+
+work/

@@ -18,7 +18,7 @@ func TestNewAnalyzer(t *testing.T) {
 func TestAnalyzeEmptyBlocks(t *testing.T) {
 	analyzer := NewAnalyzer()
 	blocks := []extractor.TextBlock{}
-	doc := analyzer.Analyze(blocks)
+	doc := analyzer.Analyze(blocks, nil, nil)
 	if len(doc) != 0 {
 		t.Errorf("Expected 0 elements, got %d", len(doc))
 	}
@@ -122,15 +122,15 @@ func ExampleAnalyzer_Analyze() {
 
 	// 2. Define raw text blocks (simulating extraction)
 	blocks := []extractor.TextBlock{
-		{Text: "1. Introduction", X: 10, Y: 800, FontSize: 14}, // Increased font size
-		{Text: "This is a paragraph.", X: 10, Y: 780, FontSize: 12},
-		{Text: "Another paragraph.", X: 10, Y: 770, FontSize: 12}, // Add more body text
-		{Text: "More body text.", X: 10, Y: 765, FontSize: 12},    // Add more body text
-		{Text: "func main() {", X: 10, Y: 760, FontSize: 10},
+		{Text: "1. Introduction", X: 10, Y: 800, FontSize: 14},      // Increased font size
+		{Text: "This is a paragraph.", X: 10, Y: 770, FontSize: 12}, // Gap 30 > Threshold
+		{Text: "Another paragraph.", X: 10, Y: 740, FontSize: 12},   // Gap 30 > Threshold
+		{Text: "More body text.", X: 10, Y: 710, FontSize: 12},      // Gap 30 > Threshold
+		{Text: "func main() {", X: 10, Y: 680, FontSize: 10},
 	}
 
 	// 3. Analyze layout
-	elements := analyzer.Analyze(blocks)
+	elements := analyzer.Analyze(blocks, nil, nil)
 
 	// 4. Print results
 	for _, el := range elements {

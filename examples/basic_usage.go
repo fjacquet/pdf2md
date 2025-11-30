@@ -40,17 +40,16 @@ func main() {
 	var allElements []layout.Element
 
 	for page := 1; page <= ext.GetPageCount(); page++ {
-		// Extract text blocks with positioning
-		blocks, err := ext.ExtractTextBlocks(page)
+		// Extract text from page 1 (0-indexed)
+		blocks, _, _, err := ext.ExtractTextBlocks(0)
 		if err != nil {
-			log.Printf("Warning: failed to extract page %d: %v", page, err)
-			continue
+			log.Fatalf("Failed to extract text: %v", err)
 		}
 
 		fmt.Printf("Page %d: extracted %d text blocks\n", page, len(blocks))
 
 		// Analyze layout (detect columns, headers, etc.)
-		elements := analyzer.Analyze(blocks)
+		elements := analyzer.Analyze(blocks, nil, nil)
 
 		// Merge consecutive text on same line
 		elements = analyzer.MergeElements(elements)

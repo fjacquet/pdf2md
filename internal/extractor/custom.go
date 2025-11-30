@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"github.com/fjacquet/pdf2md/internal/pdf"
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 // CustomExtractor implements PDFExtractor using our custom parser
@@ -28,46 +29,51 @@ func (e *CustomExtractor) GetPageCount() int {
 }
 
 // ExtractTextBlocks extracts text blocks from a page
-func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) ([]TextBlock, error) {
+func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) ([]TextBlock, []types.Image, []types.VectorGraphic, error) {
 	// Get page dictionary
 	pageDict, err := e.reader.GetPage(pageIndex)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
+	}
+
+	// Get resources dictionary
+	var resources pdf.Dictionary
+	if res, ok := pageDict[pdf.Name("Resources")]; ok {
+		if ref, ok := res.(pdf.IndirectRef); ok {
+			obj, err := e.reader.ReadObject(ref.ObjectNumber)
+			if err == nil {
+				if resDict, ok := obj.(pdf.Dictionary); ok {
+					resources = resDict
+				}
+			}
+		} else if resDict, ok := res.(pdf.Dictionary); ok {
+			resources = resDict
+		}
 	}
 
 	// Load fonts
 	fm := pdf.NewFontManager(e.reader)
-	if resources, ok := pageDict[pdf.Name("Resources")]; ok {
-		// Handle indirect reference for Resources
-		if ref, ok := resources.(pdf.IndirectRef); ok {
-			obj, err := e.reader.ReadObject(ref.ObjectNumber)
-			if err == nil {
-				if resDict, ok := obj.(pdf.Dictionary); ok {
-					_ = fm.LoadFonts(resDict)
-				}
-			}
-		} else if resDict, ok := resources.(pdf.Dictionary); ok {
-			_ = fm.LoadFonts(resDict)
-		}
+	if resources != nil {
+		_ = fm.LoadFonts(resources)
 	}
 
 	// Extract content stream
 	content, err := e.reader.ExtractContent(pageDict)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	if content == nil {
-		return nil, nil // Empty page
+		return nil, nil, nil, nil // Empty page
 	}
 
-	// Interpret content
-	interpreter := pdf.NewInterpreter(fm)
-	blocks, err := interpreter.Process(content)
+	// Process content
+	interpreter := pdf.NewInterpreter(fm, resources)
+	textBlocks, images, graphics, err := interpreter.Process(content)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
-	return blocks, nil
+	return textBlocks, images, graphics, nil
 }
 
 // SetDebug enables debug logging

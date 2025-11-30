@@ -37,6 +37,8 @@ func (b *Builder) Build(elements []layout.Element) string {
 			b.writeTable(&sb, element)
 		case layout.ElementTypeAdmonition:
 			b.writeAdmonition(&sb, element)
+		case layout.ElementTypeImage:
+			b.writeImage(&sb, element)
 		}
 
 		// Add spacing between elements
@@ -158,6 +160,13 @@ func (b *Builder) writeAdmonition(sb *strings.Builder, element layout.Element) {
 			sb.WriteString("\n")
 		}
 	}
+}
+
+// writeImage writes a Markdown image
+func (b *Builder) writeImage(sb *strings.Builder, element layout.Element) {
+	// Format: ![Image](path/to/image.png)
+	// Content holds the image path
+	sb.WriteString("![Image](" + element.Content + ")")
 }
 
 // Escape escapes special Markdown characters

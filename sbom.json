@@ -1,0 +1,95 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:d7da0f9b-2db5-41ad-b6d6-0c686b94c845",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-11-28T17:37:27+01:00",
+    "tools": [
+      {
+        "vendor": "CycloneDX",
+        "name": "cyclonedx-gomod",
+        "version": "v1.9.0",
+        "hashes": [
+          {
+            "alg": "MD5",
+            "content": "cb888348155f774717b22b23190342ab"
+          },
+          {
+            "alg": "SHA-1",
+            "content": "128d5d8cf92ea2562471ee628eb0c24d285570eb"
+          },
+          {
+            "alg": "SHA-256",
+            "content": "e00273404d170d79bb7e52597179906fa4a5cb2d928c3bc8aee01c60f3544fc9"
+          },
+          {
+            "alg": "SHA-384",
+            "content": "da1c1534200f3e07415ab259975a157ad2b0f2a8ba113e3b358e3ae5531a72607004586860f38cc8dd34a7d4da38e2aa"
+          },
+          {
+            "alg": "SHA-512",
+            "content": "89423235006b617b97acce4bf3beb4e71a90ce5fc3bd80bc4b65c93c8e8d21ed1690355e6457858431f6f7b54e370cb9949011c3ca0081456b3ac62cb71963bc"
+          }
+        ],
+        "externalReferences": [
+          {
+            "url": "https://github.com/CycloneDX/cyclonedx-gomod",
+            "type": "vcs"
+          },
+          {
+            "url": "https://cyclonedx.org",
+            "type": "website"
+          }
+        ]
+      }
+    ],
+    "component": {
+      "bom-ref": "pkg:golang/github.com/fjacquet/pdf2md@v0.0.0-20251128163222-5a9c4288fa5d?type=module",
+      "type": "application",
+      "name": "github.com/fjacquet/pdf2md",
+      "version": "v0.0.0-20251128163222-5a9c4288fa5d",
+      "purl": "pkg:golang/github.com/fjacquet/pdf2md@v0.0.0-20251128163222-5a9c4288fa5d?type=module\u0026goos=darwin\u0026goarch=arm64",
+      "externalReferences": [
+        {
+          "url": "https://github.com/fjacquet/pdf2md",
+          "type": "vcs"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:golang/github.com/alecthomas/kong@v1.13.0?type=module",
+      "type": "library",
+      "name": "github.com/alecthomas/kong",
+      "version": "v1.13.0",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e5effb5c2dee82f84fd434019934be5ae1ed09b72fe3886ca2132072f5714ab0"
+        }
+      ],
+      "purl": "pkg:golang/github.com/alecthomas/kong@v1.13.0?type=module\u0026goos=darwin\u0026goarch=arm64",
+      "externalReferences": [
+        {
+          "url": "https://github.com/alecthomas/kong",
+          "type": "vcs"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:golang/github.com/fjacquet/pdf2md@v0.0.0-20251128163222-5a9c4288fa5d?type=module",
+      "dependsOn": [
+        "pkg:golang/github.com/alecthomas/kong@v1.13.0?type=module"
+      ]
+    },
+    {
+      "ref": "pkg:golang/github.com/alecthomas/kong@v1.13.0?type=module"
+    }
+  ]
+}

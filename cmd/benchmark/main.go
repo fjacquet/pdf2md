@@ -1,121 +1,198 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io/fs"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-	"unicode"
 )
 
 func main() {
-	// Paths
-	groundTruthDir := "READoc/data/arxiv/markdown"
-	predictionDir := "READoc/output/arxiv/pdf2md"
+	// Define paths
+	dataDir := "READoc/data"
+	outputDir := "READoc/output/pdf2md"
 
-	// Get list of ground truth files
-	files, err := os.ReadDir(groundTruthDir)
-	if err != nil {
-		fmt.Printf("Error reading ground truth directory: %v\n", err)
-		os.Exit(1)
+	// Ensure output directory exists
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.Fatalf("Failed to create output directory: %v", err)
 	}
 
-	totalScore := 0.0
-	count := 0
+	// Find all PDFs
+	var pdfFiles []string
+	err := filepath.WalkDir(dataDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".pdf") {
+			pdfFiles = append(pdfFiles, path)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Fatalf("Failed to walk data directory: %v", err)
+	}
 
-	fmt.Println("Benchmarking pdf2md against READoc (ArXiv subset)...")
-	fmt.Println("---------------------------------------------------")
-	fmt.Printf("%-20s | %-10s | %s\n", "Filename", "Similarity", "Status")
-	fmt.Println("---------------------------------------------------")
+	fmt.Printf("Found %d PDF files to benchmark.\n", len(pdfFiles))
 
-	for _, file := range files {
-		if filepath.Ext(file.Name()) != ".md" {
+	var totalScore float64
+	var count int
+
+	type Result struct {
+		File  string
+		Score float64
+	}
+	var results []Result
+
+	for _, pdfPath := range pdfFiles {
+		// Determine relative path to maintain structure in output
+		relPath, err := filepath.Rel(dataDir, pdfPath)
+		if err != nil {
+			log.Printf("Failed to get relative path for %s: %v", pdfPath, err)
 			continue
 		}
 
-		gtPath := filepath.Join(groundTruthDir, file.Name())
-		predPath := filepath.Join(predictionDir, file.Name())
+		// Construct output path
+		outPath := filepath.Join(outputDir, relPath)
+		outPath = strings.TrimSuffix(outPath, ".pdf") + ".md"
 
-		// Check if prediction exists
-		if _, err := os.Stat(predPath); os.IsNotExist(err) {
-			fmt.Printf("%-20s | %-10s | %s\n", file.Name(), "N/A", "MISSING")
+		// Ensure output subdirectory exists
+		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+			log.Printf("Failed to create dir for %s: %v", outPath, err)
 			continue
 		}
+
+		// Run pdf2md
+		cmd := exec.Command("./pdf2md", pdfPath, outPath)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			log.Printf("Failed to convert %s: %v\nStderr: %s", pdfPath, err, stderr.String())
+			continue
+		}
+
+		// Determine ground truth path
+		// Structure is data/<subset>/pdf/<file>.pdf -> data/<subset>/markdown/<file>.md
+		// relPath is <subset>/pdf/<file>.pdf
+		parts := strings.Split(relPath, string(os.PathSeparator))
+		if len(parts) < 3 || parts[1] != "pdf" {
+			log.Printf("Unexpected path structure for %s, skipping comparison", relPath)
+			continue
+		}
+		// Replace 'pdf' dir with 'markdown'
+		parts[1] = "markdown"
+		gtRelPath := filepath.Join(parts...)
+		gtPath := filepath.Join(dataDir, gtRelPath)
+		gtPath = strings.TrimSuffix(gtPath, ".pdf") + ".md"
 
 		// Read files
-		gtContent, err := os.ReadFile(gtPath)
+		genBytes, err := os.ReadFile(outPath)
 		if err != nil {
-			fmt.Printf("Error reading %s: %v\n", gtPath, err)
+			log.Printf("Failed to read generated file %s: %v", outPath, err)
 			continue
 		}
-		predContent, err := os.ReadFile(predPath)
+		gtBytes, err := os.ReadFile(gtPath)
 		if err != nil {
-			fmt.Printf("Error reading %s: %v\n", predPath, err)
+			log.Printf("Failed to read ground truth file %s: %v", gtPath, err)
 			continue
 		}
 
-		// Calculate similarity
-		score := calculateSimilarity(string(gtContent), string(predContent))
+		// Normalize and compare
+		score := calculateSimilarity(string(genBytes), string(gtBytes))
+		fmt.Printf("[%s] Similarity: %.4f\n", parts[len(parts)-1], score)
+
 		totalScore += score
 		count++
-
-		status := "FAIL"
-		if score > 0.5 { // Threshold for "PASS"
-			status = "PASS"
-		}
-
-		fmt.Printf("%-20s | %.2f       | %s\n", file.Name(), score, status)
+		results = append(results, Result{File: relPath, Score: score})
 	}
 
-	fmt.Println("---------------------------------------------------")
 	if count > 0 {
-		avgScore := totalScore / float64(count)
-		fmt.Printf("Average Similarity: %.2f\n", avgScore)
-		if avgScore > 0.5 {
-			fmt.Println("Overall Result: PASS CERTIFICATE GRANTED")
-		} else {
-			fmt.Println("Overall Result: FAIL")
+		avg := totalScore / float64(count)
+		fmt.Printf("\nBenchmark Complete.\nProcessed: %d\nAverage Similarity: %.4f\n", count, avg)
+
+		// Find worst
+		minScore := 1.0
+		var worstFile string
+		for _, r := range results {
+			if r.Score < minScore {
+				minScore = r.Score
+				worstFile = r.File
+			}
 		}
+		fmt.Printf("Worst performing file: %s (Score: %.4f)\n", worstFile, minScore)
 	} else {
-		fmt.Println("No files benchmarked.")
+		fmt.Println("No files processed.")
 	}
 }
 
-// calculateSimilarity computes a simple Jaccard similarity of words
 func calculateSimilarity(s1, s2 string) float64 {
-	words1 := tokenize(s1)
-	words2 := tokenize(s2)
+	r1 := []rune(normalize(s1))
+	r2 := []rune(normalize(s2))
 
-	set1 := make(map[string]bool)
-	for _, w := range words1 {
-		set1[w] = true
+	if len(r1) == 0 && len(r2) == 0 {
+		return 1.0
 	}
-
-	intersection := 0
-	union := len(set1)
-
-	set2 := make(map[string]bool)
-	for _, w := range words2 {
-		if set2[w] {
-			continue
-		}
-		if set1[w] {
-			intersection++
-		} else {
-			union++
-		}
-		set2[w] = true
-	}
-
-	if union == 0 {
+	if len(r1) == 0 || len(r2) == 0 {
 		return 0.0
 	}
 
-	return float64(intersection) / float64(union)
+	dist := levenshtein(r1, r2)
+	maxLen := len(r1)
+	if len(r2) > maxLen {
+		maxLen = len(r2)
+	}
+
+	return 1.0 - float64(dist)/float64(maxLen)
 }
 
-func tokenize(s string) []string {
-	return strings.FieldsFunc(s, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
-	})
+func normalize(s string) string {
+	// Simple normalization: remove extra whitespace, lowercase
+	return strings.Join(strings.Fields(strings.ToLower(s)), " ")
+}
+
+func levenshtein(s1, s2 []rune) int {
+	len1 := len(s1)
+	len2 := len(s2)
+
+	// Optimize for space: use 2 rows
+	row := make([]int, len2+1)
+	for i := 0; i <= len2; i++ {
+		row[i] = i
+	}
+
+	for i := 1; i <= len1; i++ {
+		prev := i
+		var current int
+		for j := 1; j <= len2; j++ {
+			cost := 0
+			if s1[i-1] != s2[j-1] {
+				cost = 1
+			}
+			current = min(
+				row[j]+1,      // deletion
+				prev+1,        // insertion
+				row[j-1]+cost, // substitution
+			)
+			row[j-1] = prev
+			prev = current
+		}
+		row[len2] = prev
+	}
+	return row[len2]
+}
+
+func min(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
 }

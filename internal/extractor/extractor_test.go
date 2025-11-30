@@ -5,24 +5,24 @@ import (
 	"testing"
 )
 
-func TestFitzExtractor(t *testing.T) {
+func TestCustomExtractor(t *testing.T) {
 	// Create a simple test to ensure the extractor compiles
 	// We need a dummy file or just check the type
-	var _ PDFExtractor = (*FitzExtractor)(nil)
+	var _ PDFExtractor = (*CustomExtractor)(nil)
 }
 
 // TestWithRealPDF is a manual test for use with actual PDF files
 // Run with: go test -v -run TestWithRealPDF
 // Place a test PDF at internal/testdata/test.pdf
 func TestWithRealPDF(t *testing.T) {
-	pdfPath := "../../internal/testdata/test.pdf"
+	pdfPath := "../../testdata/test.pdf"
 
 	// Skip if test file doesn't exist
 	if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
 		t.Skip("Skipping test: test.pdf not found")
 	}
 
-	ext, err := NewFitzExtractor(pdfPath)
+	ext, err := NewCustomExtractor(pdfPath)
 	if err != nil {
 		t.Fatalf("Failed to open PDF: %v", err)
 	}
@@ -35,13 +35,13 @@ func TestWithRealPDF(t *testing.T) {
 		t.Fatal("Expected at least 1 page")
 	}
 
-	// Test first page extraction
-	blocks, err := ext.ExtractTextBlocks(1)
+	// Test first page	// Extract
+	blocks, images, _, err := ext.ExtractTextBlocks(0)
 	if err != nil {
-		t.Fatalf("Failed to extract text: %v", err)
+		t.Fatalf("ExtractTextBlocks failed: %v", err)
 	}
 
-	t.Logf("Extracted %d text blocks from page 1", len(blocks))
+	t.Logf("Extracted %d text blocks and %d images from page 1", len(blocks), len(images))
 
 	// Print first few blocks for inspection
 	for i, block := range blocks {

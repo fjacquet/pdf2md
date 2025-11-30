@@ -78,3 +78,36 @@ func TestReproJSONCodeBlock(t *testing.T) {
 		t.Errorf("Expected '%s' to be detected as CodeBlock", text5)
 	}
 }
+
+func TestReproTableDetection(t *testing.T) {
+	analyzer := NewAnalyzer()
+
+	// Simulate "Component" and "Description" on the same line with a gap
+	// FontSize = 12
+	// Block 1: X=10, Width=50 (End=60)
+	// Block 2: X=90, Width=50 (Start=90)
+	// Gap = 30
+	// Current WideGapThreshold = 12 * 3 = 36.
+	// Gap 30 < 36, so it merges with space -> "Component Description" -> Paragraph.
+
+	elements := []Element{
+		{Type: ElementTypeParagraph, Content: "Component", X: 10, Y: 100, Width: 50, FontSize: 12, Height: 12},
+		{Type: ElementTypeParagraph, Content: "Description", X: 100, Y: 100, Width: 50, FontSize: 12, Height: 12},
+	}
+
+	merged := analyzer.MergeElements(elements)
+
+	// Check if it's a table
+	// We need to run classifyElement on the result
+	for i := range merged {
+		analyzer.classifyElement(&merged[i], nil, 12.0)
+	}
+
+	if len(merged) != 1 {
+		t.Errorf("Expected 1 merged element, got %d", len(merged))
+	} else {
+		if merged[0].Type != ElementTypeTable {
+			t.Errorf("Expected ElementTypeTable, got %v. Content: '%s'", merged[0].Type, merged[0].Content)
+		}
+	}
+}

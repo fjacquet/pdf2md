@@ -167,8 +167,49 @@ func (t *Tokenizer) readString() (Token, error) {
 		}
 
 		if escaped {
-			// TODO: Handle octal escapes \ddd
-			buf.WriteByte(ch)
+			if isOctalDigit(ch) {
+				// Octal escape \ddd
+				// We have the first digit in ch
+				code := int(ch - '0')
+
+				// Try to read up to 2 more digits
+				for i := 0; i < 2; i++ {
+					next, err := t.peekByte()
+					if err == nil && isOctalDigit(next) {
+						t.readByte()
+						code = code*8 + int(next-'0')
+					} else {
+						break
+					}
+				}
+				buf.WriteByte(byte(code))
+			} else {
+				switch ch {
+				case 'n':
+					buf.WriteByte('\n')
+				case 'r':
+					buf.WriteByte('\r')
+				case 't':
+					buf.WriteByte('\t')
+				case 'b':
+					buf.WriteByte('\b')
+				case 'f':
+					buf.WriteByte('\f')
+				case '(', ')', '\\':
+					buf.WriteByte(ch)
+				case '\r':
+					// Backslash at end of line -> ignore both
+					next, err := t.peekByte()
+					if err == nil && next == '\n' {
+						t.readByte()
+					}
+				case '\n':
+					// Backslash at end of line -> ignore
+				default:
+					// Ignore backslash
+					buf.WriteByte(ch)
+				}
+			}
 			escaped = false
 			continue
 		}
@@ -191,6 +232,10 @@ func (t *Tokenizer) readString() (Token, error) {
 		buf.WriteByte(ch)
 	}
 	return Token{Type: TokenString, Value: buf.String()}, nil
+}
+
+func isOctalDigit(ch byte) bool {
+	return ch >= '0' && ch <= '7'
 }
 
 func (t *Tokenizer) readHexString() (Token, error) {

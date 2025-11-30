@@ -11,10 +11,15 @@ import (
 
 // Font represents a PDF font
 type Font struct {
-	BaseFont  string
-	Subtype   string
-	ToUnicode map[int]string
-	Encoding  string // For simple fonts
+	BaseFont     string
+	Subtype      string
+	ToUnicode    map[int]string
+	Encoding     map[int]string // Custom encoding map (code -> glyph name)
+	Widths       []float64
+	FirstChar    int
+	LastChar     int
+	CIDWidths    map[int]float64
+	DefaultWidth float64
 }
 
 // FontManager manages fonts for a page
@@ -83,6 +88,7 @@ func (fm *FontManager) LoadFonts(resources Dictionary) error {
 func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 	font := &Font{
 		ToUnicode: make(map[int]string),
+		Encoding:  make(map[int]string),
 	}
 
 	if baseFont, ok := dict[Name("BaseFont")].(Name); ok {
@@ -90,6 +96,78 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 	}
 	if subtype, ok := dict[Name("Subtype")].(Name); ok {
 		font.Subtype = string(subtype)
+	}
+
+	// Parse Widths
+	if firstChar, ok := dict[Name("FirstChar")].(Integer); ok {
+		font.FirstChar = int(firstChar)
+	}
+	if lastChar, ok := dict[Name("LastChar")].(Integer); ok {
+		font.LastChar = int(lastChar)
+	}
+	if widthsObj, ok := dict[Name("Widths")]; ok {
+		// Widths can be an indirect reference
+		var widthsArray Array
+		if ref, ok := widthsObj.(IndirectRef); ok {
+			obj, err := fm.reader.ReadObject(ref.ObjectNumber)
+			if err == nil {
+				if arr, ok := obj.(Array); ok {
+					widthsArray = arr
+				}
+			}
+		} else if arr, ok := widthsObj.(Array); ok {
+			widthsArray = arr
+		}
+
+		if widthsArray != nil {
+			font.Widths = make([]float64, len(widthsArray))
+			for i, w := range widthsArray {
+				if val, ok := w.(Integer); ok {
+					font.Widths[i] = float64(val)
+				} else if val, ok := w.(Real); ok {
+					font.Widths[i] = float64(val)
+				}
+			}
+		}
+	}
+
+	// Parse DescendantFonts for Type0
+	if descendantFonts, ok := dict[Name("DescendantFonts")].(Array); ok && len(descendantFonts) > 0 {
+		// Usually only one descendant font
+		var cidFontDict Dictionary
+		if ref, ok := descendantFonts[0].(IndirectRef); ok {
+			obj, err := fm.reader.ReadObject(ref.ObjectNumber)
+			if err == nil {
+				if d, ok := obj.(Dictionary); ok {
+					cidFontDict = d
+				}
+			}
+		} else if d, ok := descendantFonts[0].(Dictionary); ok {
+			cidFontDict = d
+		}
+
+		if cidFontDict != nil {
+			if err := fm.parseCIDFont(font, cidFontDict); err != nil {
+				fmt.Printf("Error parsing CID font: %v\n", err)
+			}
+		}
+	}
+
+	// Parse Encoding
+	if encodingObj, ok := dict[Name("Encoding")]; ok {
+		fm.parseEncoding(font, encodingObj)
+	} else {
+		// Default encoding based on Subtype?
+		// For Type1, default is StandardEncoding if not specified (usually)
+		// For TrueType, it's complicated.
+		// Let's assume StandardEncoding for simple fonts if nothing else.
+		if font.Subtype == "Type1" || font.Subtype == "TrueType" {
+			for i, name := range StandardEncoding {
+				if name != "" {
+					font.Encoding[i] = name
+				}
+			}
+		}
 	}
 
 	// Check ToUnicode CMap
@@ -122,6 +200,184 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 	}
 
 	return font, nil
+}
+
+func (fm *FontManager) parseEncoding(font *Font, encodingObj Object) {
+	// Encoding can be Name or Dictionary
+	var encDict Dictionary
+	var baseEncoding []string
+
+	if ref, ok := encodingObj.(IndirectRef); ok {
+		obj, err := fm.reader.ReadObject(ref.ObjectNumber)
+		if err == nil {
+			encodingObj = obj
+		}
+	}
+
+	if name, ok := encodingObj.(Name); ok {
+		switch string(name) {
+		case "WinAnsiEncoding":
+			baseEncoding = WinAnsiEncoding
+		case "MacRomanEncoding":
+			baseEncoding = MacRomanEncoding
+		case "StandardEncoding":
+			baseEncoding = StandardEncoding
+		}
+	} else if d, ok := encodingObj.(Dictionary); ok {
+		encDict = d
+		if baseEnc, ok := d[Name("BaseEncoding")].(Name); ok {
+			switch string(baseEnc) {
+			case "WinAnsiEncoding":
+				baseEncoding = WinAnsiEncoding
+			case "MacRomanEncoding":
+				baseEncoding = MacRomanEncoding
+			case "StandardEncoding":
+				baseEncoding = StandardEncoding
+			}
+		}
+	}
+
+	// Apply base encoding
+	if baseEncoding != nil {
+		for i, name := range baseEncoding {
+			if name != "" {
+				font.Encoding[i] = name
+			}
+		}
+	}
+
+	// Apply Differences
+	if encDict != nil {
+		if diffs, ok := encDict[Name("Differences")].(Array); ok {
+			var currentCode int
+			for _, item := range diffs {
+				if code, ok := item.(Integer); ok {
+					currentCode = int(code)
+				} else if name, ok := item.(Name); ok {
+					font.Encoding[currentCode] = string(name)
+					currentCode++
+				}
+			}
+		}
+	}
+}
+
+func (fm *FontManager) parseCIDFont(font *Font, dict Dictionary) error {
+	font.CIDWidths = make(map[int]float64)
+	font.DefaultWidth = 1000 // Default default width
+
+	if dw, ok := dict[Name("DW")]; ok {
+		if val, ok := dw.(Integer); ok {
+			font.DefaultWidth = float64(val)
+		} else if val, ok := dw.(Real); ok {
+			font.DefaultWidth = float64(val)
+		}
+	}
+
+	if wObj, ok := dict[Name("W")]; ok {
+		var wArray Array
+		if ref, ok := wObj.(IndirectRef); ok {
+			obj, err := fm.reader.ReadObject(ref.ObjectNumber)
+			if err == nil {
+				if arr, ok := obj.(Array); ok {
+					wArray = arr
+				}
+			}
+		} else if arr, ok := wObj.(Array); ok {
+			wArray = arr
+		}
+
+		if wArray != nil {
+			i := 0
+			for i < len(wArray) {
+				// Format: c [w1 w2 ...]
+				// OR: c_first c_last w
+
+				// First element is always c (start CID)
+				var startCID int
+				if val, ok := wArray[i].(Integer); ok {
+					startCID = int(val)
+				} else {
+					// Error or unexpected type
+					i++
+					continue
+				}
+				i++
+
+				if i >= len(wArray) {
+					break
+				}
+
+				// Check next element type
+				if arr, ok := wArray[i].(Array); ok {
+					// c [w1 w2 ...]
+					for j, w := range arr {
+						width := 0.0
+						if val, ok := w.(Integer); ok {
+							width = float64(val)
+						} else if val, ok := w.(Real); ok {
+							width = float64(val)
+						}
+						font.CIDWidths[startCID+j] = width
+					}
+					i++
+				} else {
+					// c_first c_last w
+					// We already have c_first (startCID)
+					// Next should be c_last
+					var endCID int
+					if val, ok := wArray[i].(Integer); ok {
+						endCID = int(val)
+					} else {
+						i++
+						continue
+					}
+					i++
+
+					if i >= len(wArray) {
+						break
+					}
+
+					// Next should be width
+					var width float64
+					if val, ok := wArray[i].(Integer); ok {
+						width = float64(val)
+					} else if val, ok := wArray[i].(Real); ok {
+						width = float64(val)
+					}
+					i++
+
+					for c := startCID; c <= endCID; c++ {
+						font.CIDWidths[c] = width
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// GetWidth returns the width of the character code
+func (f *Font) GetWidth(code int) float64 {
+	if f.CIDWidths != nil {
+		if w, ok := f.CIDWidths[code]; ok {
+			return w
+		}
+		return f.DefaultWidth
+	}
+
+	if len(f.Widths) > 0 {
+		if code >= f.FirstChar && code <= f.LastChar {
+			idx := code - f.FirstChar
+			if idx >= 0 && idx < len(f.Widths) {
+				return f.Widths[idx]
+			}
+		}
+	}
+	// Default width?
+	// For standard 14 fonts we should have metrics, but for now return 0 or estimate
+	// If we return 0, the interpreter might use the fallback estimate.
+	return 0
 }
 
 // DecodeString decodes a PDF string using the font's encoding/CMap
@@ -157,8 +413,18 @@ func (f *Font) DecodeString(s string) string {
 				if val, ok := f.ToUnicode[code]; ok {
 					res.WriteString(val)
 				} else {
-					// Fallback: assume ASCII/Latin1
-					res.WriteByte(data[i])
+					// Fallback: use Encoding if available
+					if name, ok := f.Encoding[code]; ok {
+						if uni, ok := GlyphToUnicode[name]; ok {
+							res.WriteString(uni)
+						} else {
+							// Unknown glyph name
+							res.WriteByte(data[i])
+						}
+					} else {
+						// Fallback: assume ASCII/Latin1
+						res.WriteByte(data[i])
+					}
 				}
 				i++
 			}
@@ -166,9 +432,45 @@ func (f *Font) DecodeString(s string) string {
 		return res.String()
 	}
 
-	// No CMap, assume simple encoding (WinAnsi/MacRoman)
-	// TODO: Implement Encoding lookup
-	return s
+	// No CMap, use Encoding
+	var res strings.Builder
+	data := []byte(s)
+	for i := 0; i < len(data); i++ {
+		code := int(data[i])
+		if name, ok := f.Encoding[code]; ok {
+			if uni, ok := GlyphToUnicode[name]; ok {
+				res.WriteString(uni)
+			} else {
+				// Unknown glyph name
+				res.WriteByte(data[i])
+			}
+		} else {
+			// Fallback: assume ASCII/Latin1
+			res.WriteByte(data[i])
+		}
+	}
+	return res.String()
+}
+
+// CalculateWidth calculates the width of the string in text space (1000 units)
+func (f *Font) CalculateWidth(s string) float64 {
+	var width float64
+	data := []byte(s)
+	i := 0
+	isComposite := f.Subtype == "Type0"
+
+	for i < len(data) {
+		var code int
+		if isComposite && i+1 < len(data) {
+			code = int(data[i])<<8 | int(data[i+1])
+			i += 2
+		} else {
+			code = int(data[i])
+			i++
+		}
+		width += f.GetWidth(code)
+	}
+	return width
 }
 
 func (f *Font) parseToUnicodeCMap(data []byte) error {
@@ -312,4 +614,20 @@ func parseHexStringToUTF16(s string) []rune {
 		u16s[i] = uint16(b[2*i])<<8 | uint16(b[2*i+1])
 	}
 	return utf16.Decode(u16s)
+}
+
+// DecodeString decodes a string using the specified font
+func (fm *FontManager) DecodeString(fontName Name, s string) string {
+	if font, ok := fm.Fonts[fontName]; ok {
+		return font.DecodeString(s)
+	}
+	return s
+}
+
+// CalculateWidth calculates the width of the string using the specified font
+func (fm *FontManager) CalculateWidth(fontName Name, s string) float64 {
+	if font, ok := fm.Fonts[fontName]; ok {
+		return font.CalculateWidth(s)
+	}
+	return 0
 }
