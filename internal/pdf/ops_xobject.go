@@ -90,16 +90,33 @@ func (in *Interpreter) extractImage(name Name, stream *Stream) error {
 
 	// Check filter
 	if filter, ok := stream.Dictionary[Name("Filter")].(Name); ok {
-		decoded, err := DecodeStream(data, filter)
+		var decodeParms Dictionary
+		if parms, ok := stream.Dictionary[Name("DecodeParms")].(Dictionary); ok {
+			decodeParms = parms
+		}
+		decoded, err := DecodeStream(data, filter, decodeParms)
 		if err != nil {
 			return err
 		}
 		data = decoded
 	} else if filters, ok := stream.Dictionary[Name("Filter")].(Array); ok {
 		// Multiple filters
-		for _, f := range filters {
+		// DecodeParms can be an array or a single dictionary (if only one filter needs it?)
+		// Standard says: "If there is only one filter, DecodeParms is a dictionary... If there are multiple filters, DecodeParms is an array..."
+		var decodeParmsArr Array
+		if parmsArr, ok := stream.Dictionary[Name("DecodeParms")].(Array); ok {
+			decodeParmsArr = parmsArr
+		}
+
+		for i, f := range filters {
 			if filterName, ok := f.(Name); ok {
-				decoded, err := DecodeStream(data, filterName)
+				var decodeParms Dictionary
+				if i < len(decodeParmsArr) {
+					if parms, ok := decodeParmsArr[i].(Dictionary); ok {
+						decodeParms = parms
+					}
+				}
+				decoded, err := DecodeStream(data, filterName, decodeParms)
 				if err != nil {
 					return err
 				}

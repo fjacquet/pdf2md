@@ -2,6 +2,7 @@ package pdf
 
 import "github.com/fjacquet/pdf2md/internal/types"
 
+// GraphicsState holds the current graphics state parameters
 type GraphicsState struct {
 	CTM Matrix
 

@@ -19,6 +19,10 @@ benchmark:
 fmt:
 	go fmt ./...
 
+# Run linters
+lint:
+	go vet ./...
+
 # Clean build artifacts
 clean:
 	rm -f $(BINARY_NAME)

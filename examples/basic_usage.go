@@ -28,7 +28,15 @@ func main() {
 	}
 	defer ext.Close()
 
-	fmt.Printf("PDF has %d pages\n", ext.GetPageCount())
+	pageCount, err := ext.GetPageCount()
+	if err != nil {
+		log.Fatalf("Failed to get page count: %v", err)
+	}
+	pc, err := ext.GetPageCount()
+	if err != nil {
+		log.Fatalf("Failed to get page count: %v", err)
+	}
+	fmt.Printf("PDF has %d pages\n", pc)
 
 	// Step 3: Create layout analyzer
 	analyzer := layout.NewAnalyzer()
@@ -39,17 +47,17 @@ func main() {
 	// Step 5: Process each page
 	var allElements []layout.Element
 
-	for page := 1; page <= ext.GetPageCount(); page++ {
+	for page := 1; page <= pageCount; page++ {
 		// Extract text from page 1 (0-indexed)
-		blocks, _, _, err := ext.ExtractTextBlocks(0)
+		content, err := ext.ExtractTextBlocks(page - 1)
 		if err != nil {
 			log.Fatalf("Failed to extract text: %v", err)
 		}
 
-		fmt.Printf("Page %d: extracted %d text blocks\n", page, len(blocks))
+		fmt.Printf("Page %d: extracted %d text blocks\n", page, len(content.TextBlocks))
 
 		// Analyze layout (detect columns, headers, etc.)
-		elements := analyzer.Analyze(blocks, nil, nil)
+		elements := analyzer.Analyze(content)
 
 		// Merge consecutive text on same line
 		elements = analyzer.MergeElements(elements)
@@ -57,7 +65,7 @@ func main() {
 		allElements = append(allElements, elements...)
 
 		// Add page separator
-		if page < ext.GetPageCount() {
+		if page < pageCount {
 			allElements = append(allElements, layout.Element{
 				Type:    layout.ElementTypeParagraph,
 				Content: "---",

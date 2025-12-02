@@ -28,7 +28,10 @@ func TestWithRealPDF(t *testing.T) {
 	}
 	defer ext.Close()
 
-	pageCount := ext.GetPageCount()
+	pageCount, err := ext.GetPageCount()
+	if err != nil {
+		t.Fatalf("Failed to get page count: %v", err)
+	}
 	t.Logf("PDF has %d pages", pageCount)
 
 	if pageCount == 0 {
@@ -36,15 +39,15 @@ func TestWithRealPDF(t *testing.T) {
 	}
 
 	// Test first page	// Extract
-	blocks, images, _, err := ext.ExtractTextBlocks(0)
+	content, err := ext.ExtractTextBlocks(1)
 	if err != nil {
 		t.Fatalf("ExtractTextBlocks failed: %v", err)
 	}
 
-	t.Logf("Extracted %d text blocks and %d images from page 1", len(blocks), len(images))
+	t.Logf("Extracted %d text blocks and %d images from page 1", len(content.TextBlocks), len(content.Images))
 
 	// Print first few blocks for inspection
-	for i, block := range blocks {
+	for i, block := range content.TextBlocks {
 		if i >= 5 {
 			break
 		}

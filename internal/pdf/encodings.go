@@ -98,6 +98,7 @@ var (
 	}
 )
 
+// GlyphToUnicode maps glyph names to Unicode strings
 var GlyphToUnicode = map[string]string{
 	"space":          " ",
 	"exclam":         "!",

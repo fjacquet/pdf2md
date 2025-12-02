@@ -8,6 +8,7 @@ type TextBlock struct {
 	Height   float64
 	FontSize float64
 	FontName string
+	LinkURI  string
 }
 
 // Image represents an extracted image
@@ -18,4 +19,10 @@ type Image struct {
 	X, Y   float64
 	Width  float64
 	Height float64
+}
+
+// Link represents a hyperlink in the document
+type Link struct {
+	URI  string
+	Rect []float64 // [x1, y1, x2, y2]
 }

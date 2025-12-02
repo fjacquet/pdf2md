@@ -17,8 +17,7 @@ func TestNewAnalyzer(t *testing.T) {
 
 func TestAnalyzeEmptyBlocks(t *testing.T) {
 	analyzer := NewAnalyzer()
-	blocks := []extractor.TextBlock{}
-	doc := analyzer.Analyze(blocks, nil, nil)
+	doc := analyzer.Analyze(&extractor.PageContent{TextBlocks: []extractor.TextBlock{}})
 	if len(doc) != 0 {
 		t.Errorf("Expected 0 elements, got %d", len(doc))
 	}
@@ -130,7 +129,10 @@ func ExampleAnalyzer_Analyze() {
 	}
 
 	// 3. Analyze layout
-	elements := analyzer.Analyze(blocks, nil, nil)
+	content := &extractor.PageContent{
+		TextBlocks: blocks,
+	}
+	elements := analyzer.Analyze(content)
 
 	// 4. Print results
 	for _, el := range elements {

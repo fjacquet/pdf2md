@@ -31,8 +31,9 @@ func NewInterpreter(fm *FontManager, resources Dictionary) *Interpreter {
 		FontManager: fm,
 		Resources:   resources,
 		State: GraphicsState{
-			CTM: IdentityMatrix(),
-			Th:  100.0, // Default horizontal scaling is 100%
+			CTM:       IdentityMatrix(),
+			Th:        100.0, // Default horizontal scaling is 100%
+			LineWidth: 1.0,   // Default line width
 		},
 		Tm:  IdentityMatrix(),
 		Tlm: IdentityMatrix(),

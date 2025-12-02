@@ -91,17 +91,66 @@ func (r *Reader) readTrailer() error {
 	}
 
 	// Parse Xref
-	if err := r.readXref(xrefOffset); err != nil {
-		return fmt.Errorf("failed to read xref: %w", err)
+	// Loop to follow /Prev chain
+	currentOffset := xrefOffset
+	visited := make(map[int64]bool)
+
+	for {
+		if visited[currentOffset] {
+			return fmt.Errorf("circular reference in xref chain at offset %d", currentOffset)
+		}
+		visited[currentOffset] = true
+
+		trailer, err := r.readXref(currentOffset)
+		if err != nil {
+			return fmt.Errorf("failed to read xref at offset %d: %w", currentOffset, err)
+		}
+
+		// Save the first trailer found as the main trailer (latest update)
+		if r.Trailer == nil {
+			r.Trailer = trailer
+		}
+
+		// Check for /XRefStm (Hybrid-reference file)
+		if xrefStmObj, ok := trailer[Name("XRefStm")]; ok {
+			if xrefStmOffset, ok := xrefStmObj.(Integer); ok {
+				stmOffset := int64(xrefStmOffset)
+				if !visited[stmOffset] {
+					visited[stmOffset] = true
+					_, err := r.readXref(stmOffset)
+					if err != nil {
+						// Warn but maybe continue? For now, let's fail if we can't read it, as it might contain critical objects.
+						return fmt.Errorf("failed to read XRefStm at offset %d: %w", stmOffset, err)
+					}
+				}
+			}
+		}
+
+		// Check for /Prev
+		prevObj, ok := trailer[Name("Prev")]
+		if !ok {
+			break
+		}
+
+		// Parse Prev offset
+		if prevOffset, ok := prevObj.(Integer); ok {
+			currentOffset = int64(prevOffset)
+		} else if prevOffset, ok := prevObj.(Real); ok {
+			currentOffset = int64(prevOffset)
+		} else {
+			// Invalid Prev, stop
+			break
+		}
 	}
 
-	return nil
+	return r.extractRoot()
 }
 
-func (r *Reader) readXref(offset int64) error {
+// readXref reads the XRef table/stream at the given offset and returns the trailer dictionary
+func (r *Reader) readXref(offset int64) (Dictionary, error) {
 	_, err := r.f.Seek(offset, io.SeekStart)
 	if err != nil {
-		return fmt.Errorf("failed to seek to xref offset %d: %w", offset, err)
+		return nil, fmt.Errorf("failed to seek to xref offset %d: %w", offset, err)
 	}
 
 	t := NewTokenizer(r.f)
@@ -109,7 +158,7 @@ func (r *Reader) readXref(offset int64) error {
 	// Check for "xref" keyword or XRef stream object
 	tok, err := t.NextToken()
 	if err != nil {
-		return fmt.Errorf("failed to read token at xref offset: %w", err)
+		return nil, fmt.Errorf("failed to read token at xref offset: %w", err)
 	}
 
 	if tok.Value == "xref" {
@@ -123,50 +172,50 @@ func (r *Reader) readXref(offset int64) error {
 		// Expect GenNum
 		tok2, err := t.NextToken()
 		if err != nil {
-			return fmt.Errorf("failed to read gen num: %w", err)
+			return nil, fmt.Errorf("failed to read gen num: %w", err)
 		}
 		if tok2.Type != TokenNumeric {
-			return fmt.Errorf("expected gen num, got %v", tok2)
+			return nil, fmt.Errorf("expected gen num, got %v", tok2)
 		}
 
 		// Expect "obj"
 		tok3, err := t.NextToken()
 		if err != nil {
-			return fmt.Errorf("failed to read 'obj' keyword: %w", err)
+			return nil, fmt.Errorf("failed to read 'obj' keyword: %w", err)
 		}
 		if tok3.Value != "obj" {
-			return fmt.Errorf("expected 'obj', got %v", tok3)
+			return nil, fmt.Errorf("expected 'obj', got %v", tok3)
 		}
 
 		p := NewParser(t)
 		obj, err := p.ParseObject()
 		if err != nil {
-			return fmt.Errorf("failed to parse object at xref offset: %w", err)
+			return nil, fmt.Errorf("failed to parse object at xref offset: %w", err)
 		}
 
 		stream, ok := obj.(Stream)
 		if !ok {
-			return fmt.Errorf("expected XRef stream, got %T", obj)
+			return nil, fmt.Errorf("expected XRef stream, got %T", obj)
 		}
 
 		// Check Type
 		if typeName, ok := stream.Dictionary[Name("Type")].(Name); !ok || typeName != "XRef" {
-			return fmt.Errorf("expected XRef stream, got Type %v", stream.Dictionary[Name("Type")])
+			return nil, fmt.Errorf("expected XRef stream, got Type %v", stream.Dictionary[Name("Type")])
 		}
 
 		return r.parseXRefStream(&stream)
 	}
 
-	return fmt.Errorf("expected 'xref' or object number, got %v", tok)
+	return nil, fmt.Errorf("expected 'xref' or object number, got %v", tok)
 }
 
-func (r *Reader) parseXRefTable(t *Tokenizer) error {
+func (r *Reader) parseXRefTable(t *Tokenizer) (Dictionary, error) {
 	// Read subsections
 	for {
 		// Expect start_obj_num count
 		tok, err := t.NextToken()
 		if err != nil {
-			return fmt.Errorf("failed to read xref subsection start: %w", err)
+			return nil, fmt.Errorf("failed to read xref subsection start: %w", err)
 		}
 
 		// If we hit "trailer", we are done with xref
@@ -176,45 +225,55 @@ func (r *Reader) parseXRefTable(t *Tokenizer) error {
 
 		startObj, err := toInt(tok)
 		if err != nil {
-			return fmt.Errorf("expected object number, got %v: %w", tok, err)
+			return nil, fmt.Errorf("expected object number, got %v: %w", tok, err)
 		}
 
 		tok, err = t.NextToken()
 		if err != nil {
-			return fmt.Errorf("failed to read xref subsection count: %w", err)
+			return nil, fmt.Errorf("failed to read xref subsection count: %w", err)
 		}
 		count, err := toInt(tok)
 		if err != nil {
-			return fmt.Errorf("expected count, got %v: %w", tok, err)
+			return nil, fmt.Errorf("expected count, got %v: %w", tok, err)
 		}
 
 		for i := 0; i < count; i++ {
 			tokOffset, err := t.NextToken()
 			if err != nil {
-				return fmt.Errorf("failed to read xref entry offset: %w", err)
+				return nil, fmt.Errorf("failed to read xref entry offset: %w", err)
 			}
 			offset, err := toInt64(tokOffset)
 			if err != nil {
-				return fmt.Errorf("invalid xref entry offset: %w", err)
+				return nil, fmt.Errorf("invalid xref entry offset: %w", err)
 			}
 
 			// Gen number
 			tokGen, err := t.NextToken()
 			if err != nil {
-				return fmt.Errorf("failed to read xref entry gen: %w", err)
+				return nil, fmt.Errorf("failed to read xref entry gen: %w", err)
 			}
 			gen, _ := toInt(tokGen)
 
 			tokFlag, err := t.NextToken()
 			if err != nil {
-				return fmt.Errorf("failed to read xref entry flag: %w", err)
+				return nil, fmt.Errorf("failed to read xref entry flag: %w", err)
 			}
 
 			if tokFlag.Value == "n" {
-				r.XrefTable[startObj+i] = XrefEntry{
-					Type:   1,
-					Offset: offset,
-					Gen:    gen,
+				// Only add if not already present (latest update wins)
+				// Wait, standard says we process from latest to earliest?
+				// "The trailer dictionary ... contains a /Prev key ... finding the previous cross-reference section"
+				// "Entries in the most recent cross-reference section take precedence"
+				// So we should populate if NOT present.
+				// But we are reading from latest (trailer) backwards.
+				// So if we find an entry, we keep it. If we find it again in older xref, we ignore it.
+				// So:
+				if _, exists := r.XrefTable[startObj+i]; !exists {
+					r.XrefTable[startObj+i] = XrefEntry{
+						Type:   1,
+						Offset: offset,
+						Gen:    gen,
+					}
 				}
 			}
 		}
@@ -225,32 +284,31 @@ func (r *Reader) parseXRefTable(t *Tokenizer) error {
 	// Expect "<<"
 	tok, err := t.NextToken()
 	if err != nil {
-		return fmt.Errorf("failed to read trailer dictionary start: %w", err)
+		return nil, fmt.Errorf("failed to read trailer dictionary start: %w", err)
 	}
 	if tok.Type != TokenDictStart {
-		return fmt.Errorf("expected trailer dictionary start '<<', got %v", tok)
+		return nil, fmt.Errorf("expected trailer dictionary start '<<', got %v", tok)
 	}
 
 	t.UnreadToken(tok)
 	obj, err := p.ParseObject()
 	if err != nil {
-		return fmt.Errorf("failed to parse trailer dictionary: %w", err)
+		return nil, fmt.Errorf("failed to parse trailer dictionary: %w", err)
 	}
 
 	dict, ok := obj.(Dictionary)
 	if !ok {
-		return fmt.Errorf("trailer is not a dictionary")
+		return nil, fmt.Errorf("trailer is not a dictionary")
 	}
-	r.Trailer = dict
 
-	return r.extractRoot()
+	return dict, nil
 }
 
-func (r *Reader) parseXRefStream(stream *Stream) error {
+func (r *Reader) parseXRefStream(stream *Stream) (Dictionary, error) {
 	// 1. Get W array
 	wArr, ok := stream.Dictionary[Name("W")].(Array)
 	if !ok || len(wArr) != 3 {
-		return fmt.Errorf("invalid W array in XRef stream")
+		return nil, fmt.Errorf("invalid W array in XRef stream")
 	}
 	w := make([]int, 3)
 	for i := 0; i < 3; i++ {
@@ -259,7 +317,7 @@ func (r *Reader) parseXRefStream(stream *Stream) error {
 		} else if val, ok := wArr[i].(Real); ok {
 			w[i] = int(val)
 		} else {
-			return fmt.Errorf("invalid W value")
+			return nil, fmt.Errorf("invalid W value")
 		}
 	}
 
@@ -274,7 +332,7 @@ func (r *Reader) parseXRefStream(stream *Stream) error {
 	} else {
 		sizeObj, ok := stream.Dictionary[Name("Size")]
 		if !ok {
-			return fmt.Errorf("missing Size in XRef stream")
+			return nil, fmt.Errorf("missing Size in XRef stream")
 		}
 		size := 0
 		if s, ok := sizeObj.(Integer); ok {
@@ -286,9 +344,13 @@ func (r *Reader) parseXRefStream(stream *Stream) error {
 	// 3. Decode data
 	data := stream.Data
 	if filter, ok := stream.Dictionary[Name("Filter")].(Name); ok {
-		decoded, err := DecodeStream(data, filter)
+		var decodeParms Dictionary
+		if parms, ok := stream.Dictionary[Name("DecodeParms")].(Dictionary); ok {
+			decodeParms = parms
+		}
+		decoded, err := DecodeStream(data, filter, decodeParms)
 		if err != nil {
-			return fmt.Errorf("failed to decode xref stream: %w", err)
+			return nil, fmt.Errorf("failed to decode xref stream: %w", err)
 		}
 		data = decoded
 	}
@@ -296,7 +358,7 @@ func (r *Reader) parseXRefStream(stream *Stream) error {
 	// 4. Iterate
 	entryLen := w[0] + w[1] + w[2]
 	if entryLen == 0 {
-		return fmt.Errorf("invalid W array (sum is 0)")
+		return nil, fmt.Errorf("invalid W array (sum is 0)")
 	}
 
 	buf := bytes.NewReader(data)
@@ -312,7 +374,7 @@ func (r *Reader) parseXRefStream(stream *Stream) error {
 				if err == io.EOF {
 					break
 				}
-				return fmt.Errorf("failed to read xref entry: %w", err)
+				return nil, fmt.Errorf("failed to read xref entry: %w", err)
 			}
 
 			// Extract fields
@@ -322,45 +384,58 @@ func (r *Reader) parseXRefStream(stream *Stream) error {
 
 			objNum := startObj + j
 
-			switch f1 {
-			case 0: // Free entry
-				// Ignore
-			case 1: // In-use entry (offset)
-				r.XrefTable[objNum] = XrefEntry{
-					Type:   1,
-					Offset: f2,
-					Gen:    int(f3),
-				}
-			case 2: // Compressed object (objNum of stream, index in stream)
-				r.XrefTable[objNum] = XrefEntry{
-					Type:         2,
-					StreamObjNum: int(f2),
-					StreamIndex:  int(f3),
+			// Only add if not already present (latest update wins)
+			if _, exists := r.XrefTable[objNum]; !exists {
+				switch f1 {
+				case 0: // Free entry
+					// Ignore
+				case 1: // In-use entry (offset)
+					r.XrefTable[objNum] = XrefEntry{
+						Type:   1,
+						Offset: f2,
+						Gen:    int(f3),
+					}
+				case 2: // Compressed object (objNum of stream, index in stream)
+					r.XrefTable[objNum] = XrefEntry{
+						Type:         2,
+						StreamObjNum: int(f2),
+						StreamIndex:  int(f3),
+					}
 				}
 			}
 		}
 	}
 
-	// 5. Handle Trailer keys
-	r.Trailer = stream.Dictionary
-
-	return r.extractRoot()
+	// Return the stream dictionary as trailer
+	return stream.Dictionary, nil
 }
 
 func (r *Reader) extractRoot() error {
-	if rootRef, ok := r.Trailer[Name("Root")].(IndirectRef); ok {
-		if _, ok := r.XrefTable[rootRef.ObjectNumber]; ok {
-			rootObj, err := r.ReadObject(rootRef.ObjectNumber)
-			if err != nil {
-				// Don't fail if root object cannot be read, just return nil
-				// But maybe we should log it?
-				return nil
-			}
-			if rootDict, ok := rootObj.(Dictionary); ok {
-				r.Root = rootDict
-			}
-		}
+	rootVal, ok := r.Trailer[Name("Root")]
+	if !ok {
+		return fmt.Errorf("trailer missing /Root")
 	}
+
+	rootRef, ok := rootVal.(IndirectRef)
+	if !ok {
+		return fmt.Errorf("/Root is not an indirect reference")
+	}
+
+	if _, ok := r.XrefTable[rootRef.ObjectNumber]; !ok {
+		return fmt.Errorf("/Root object %d not found in xref table", rootRef.ObjectNumber)
+	}
+
+	rootObj, err := r.ReadObject(rootRef.ObjectNumber)
+	if err != nil {
+		return fmt.Errorf("failed to read /Root object %d: %w", rootRef.ObjectNumber, err)
+	}
+
+	rootDict, ok := rootObj.(Dictionary)
+	if !ok {
+		return fmt.Errorf("/Root object is not a dictionary")
+	}
+
+	r.Root = rootDict
 	return nil
 }
 
@@ -449,7 +524,11 @@ func (r *Reader) readCompressedObject(streamObjNum, index int) (Object, error) {
 
 func (r *Reader) parseObjStm(stream Stream, targetIndex int) (Object, error) {
 	// Decode data
-	data, err := decodeStream(stream)
+	var decodeParms Dictionary
+	if parms, ok := stream.Dictionary[Name("DecodeParms")].(Dictionary); ok {
+		decodeParms = parms
+	}
+	data, err := DecodeStream(stream.Data, stream.Dictionary[Name("Filter")].(Name), decodeParms)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode object stream: %w", err)
 	}
@@ -564,7 +643,14 @@ func (r *Reader) GetPage(pageIndex int) (Dictionary, error) {
 	}
 
 	// Start traversal
-	return r.traversePageTree(pagesRef, &pageIndex)
+	page, err := r.traversePageTree(pagesRef, &pageIndex)
+	if err != nil {
+		return nil, err
+	}
+	if page == nil {
+		return nil, fmt.Errorf("page %d not found", pageIndex)
+	}
+	return page, nil
 }
 
 func (r *Reader) traversePageTree(ref IndirectRef, pageIndex *int) (Dictionary, error) {

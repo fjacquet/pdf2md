@@ -24,6 +24,6 @@ func FuzzAnalyze(f *testing.F) {
 
 		analyzer := NewAnalyzer()
 		// Should not panic
-		analyzer.Analyze(blocks, nil, nil)
+		analyzer.Analyze(&extractor.PageContent{TextBlocks: blocks})
 	})
 }

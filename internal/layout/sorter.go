@@ -111,7 +111,7 @@ func detectAndSortColumns(blocks []extractor.TextBlock) []extractor.TextBlock {
 	// 2. Find the best vertical gutter (X-Cut)
 	// We look for a vertical strip with minimal text density.
 	// We use a histogram approach.
-	minGutterWidthBins := 15 // 30.0 units width (approx 1cm) - increased to avoid "rivers" in single column text
+	minGutterWidthBins := 8 // Reduced to 8 (approx 16 units) to detect narrower gaps
 	if int(maxX-minX)/2 < minGutterWidthBins {
 		return detectAndSortRows(blocks)
 	}
@@ -145,8 +145,60 @@ func detectAndSortColumns(blocks []extractor.TextBlock) []extractor.TextBlock {
 	// If the best window has high density, abort X-Cut and try Y-Cut.
 	// High density means many blocks cross this "gutter".
 	// If density > len(blocks) * 0.1, it's probably not a gutter.
+	// If the best window has high density, check if it's just Header/Footer.
+	// If the blocks in the gutter leave a large vertical gap (e.g. > 50% of height), it's a valid column split.
 	if minWindowDensity > int(float64(len(blocks))*0.1) {
-		return detectAndSortRows(blocks)
+		// Check for vertical gap in gutter
+		gutterBlocks := make([]extractor.TextBlock, 0)
+		gutterStart := minX + float64(bestWindowStart)*2.0
+		gutterEnd := gutterStart + float64(minGutterWidthBins)*2.0
+
+		for _, b := range blocks {
+			// Check if block overlaps with gutter
+			if b.X+b.Width > gutterStart && b.X < gutterEnd {
+				gutterBlocks = append(gutterBlocks, b)
+			}
+		}
+
+		if len(gutterBlocks) > 0 {
+			// Sort by Y
+			sort.Slice(gutterBlocks, func(i, j int) bool {
+				return gutterBlocks[i].Y < gutterBlocks[j].Y
+			})
+
+			// Find max gap
+			maxGap := 0.0
+			// Check gap from top of page to first block
+			minY := blocks[0].Y
+			maxY := blocks[0].Y + blocks[0].Height
+			for _, b := range blocks {
+				if b.Y < minY {
+					minY = b.Y
+				}
+				if b.Y+b.Height > maxY {
+					maxY = b.Y + b.Height
+				}
+			}
+
+			if len(gutterBlocks) > 0 {
+				maxGap = math.Max(maxGap, gutterBlocks[0].Y-minY)
+				for i := 0; i < len(gutterBlocks)-1; i++ {
+					gap := gutterBlocks[i+1].Y - (gutterBlocks[i].Y + gutterBlocks[i].Height)
+					if gap > maxGap {
+						maxGap = gap
+					}
+				}
+				maxGap = math.Max(maxGap, maxY-(gutterBlocks[len(gutterBlocks)-1].Y+gutterBlocks[len(gutterBlocks)-1].Height))
+			} else {
+				maxGap = maxY - minY
+			}
+
+			pageHeight := maxY - minY
+			// If max gap is less than 50% of page height, then the gutter is blocked by content throughout.
+			if maxGap < pageHeight*0.5 {
+				return detectAndSortRows(blocks)
+			}
+		}
 	}
 
 	// Center of the best window
@@ -197,10 +249,9 @@ func detectAndSortColumns(blocks []extractor.TextBlock) []extractor.TextBlock {
 	leftWidth := getGroupWidth(left)
 	rightWidth := getGroupWidth(right)
 
-	// If either side is too narrow (e.g. < 25% of total width), treat as single column
-	// Increased from 15% to 25% to avoid splitting code blocks/lists which might be ~20% width.
-	// Real columns (2 or 3 cols) are usually > 30%.
-	if leftWidth < width*0.25 || rightWidth < width*0.25 {
+	// If either side is too narrow (e.g. < 40% of total width), treat as single column
+	// Real columns (2 cols) are usually ~50%. Rivers are usually off-center.
+	if leftWidth < width*0.40 || rightWidth < width*0.40 {
 		return detectAndSortRows(blocks)
 	}
 
@@ -213,12 +264,8 @@ func detectAndSortColumns(blocks []extractor.TextBlock) []extractor.TextBlock {
 	// Check for row alignment
 	alignmentScore := checkRowAlignment(left, right)
 
-	// Heuristic:
-	// If Horizontal Flow is significant (>= Vertical), it's likely a single column (paragraph split or code).
-	// Exception: If Vertical is very high and Horizontal is low, it's columns.
-	// We favor NOT splitting if ambiguous.
-
-	if horizontalFlowScore > verticalFlowScore && horizontalFlowScore > 0 {
+	// If Horizontal Flow is significant (>= Vertical * 2), it's likely a single column.
+	if horizontalFlowScore > verticalFlowScore*2 && verticalFlowScore < 5 {
 		return detectAndSortRows(blocks)
 	}
 
@@ -386,12 +433,13 @@ func checkHorizontalFlow(left, right []extractor.TextBlock) int {
 					lastChar := text[len(text)-1]
 					firstChar := nextText[0]
 
-					// Hyphenation (rare for horizontal split unless table)
+					// Hyphenation: Only count if next line starts with lowercase
 					if lastChar == '-' {
-						score += 1
-					}
-					// Sentence continuation (lowercase start)
-					if firstChar >= 'a' && firstChar <= 'z' {
+						if firstChar >= 'a' && firstChar <= 'z' {
+							score += 2
+						}
+					} else if firstChar >= 'a' && firstChar <= 'z' {
+						// Sentence continuation (lowercase start) without hyphen
 						score += 1
 					}
 					// Code syntax flow?

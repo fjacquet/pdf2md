@@ -13,7 +13,7 @@ type Image = types.Image
 // PDFExtractor defines the interface for extracting content from PDFs
 // This abstraction allows swapping implementations (ledongthuc/pdf, unidoc, etc.)
 type PDFExtractor interface {
-	GetPageCount() int
-	ExtractTextBlocks(pageIndex int) ([]TextBlock, []types.Image, []types.VectorGraphic, error)
+	GetPageCount() (int, error)
+	ExtractTextBlocks(pageIndex int) (*PageContent, error)
 	Close() error
 }

@@ -28,6 +28,7 @@ Thumbs.db
 
 # Test data (keep directory structure)
 testdata/*.pdf
+images/
 
 # Output files
 *.md.bak
