@@ -25,7 +25,7 @@ jobs:
       run: go build -v ./...
 
     - name: create file
-      run:  go build -o $(BINARY_NAME) cmd/pdf2md/main.go
+      run:  go build -o pdf2md cmd/pdf2md/main.go
 
     - name: Test
       run: go test -v ./...
