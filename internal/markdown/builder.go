@@ -3,7 +3,7 @@ package markdown
 import (
 	"strings"
 
-	"github.com/fjacquet/pdf2md/internal/layout"
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 // Builder converts structured elements to Markdown
@@ -22,7 +22,7 @@ func NewBuilder() *Builder {
 }
 
 // Build converts elements to Markdown string
-func (b *Builder) Build(elements []layout.Element) string {
+func (b *Builder) Build(elements []types.Element) string {
 	var sb strings.Builder
 
 	for i, element := range elements {
@@ -56,7 +56,7 @@ func (b *Builder) Build(elements []layout.Element) string {
 		if i < len(elements)-1 {
 			nextElement := elements[i+1]
 			// If current is list and next is NOT list, add extra newline to break list
-			if element.Type == layout.ElementTypeList && nextElement.Type != layout.ElementTypeList {
+			if element.Type == types.ElementTypeList && nextElement.Type != types.ElementTypeList {
 				sb.WriteString("\n")
 			}
 		}

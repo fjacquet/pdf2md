@@ -4,32 +4,22 @@ import (
 	"strings"
 
 	"github.com/fjacquet/pdf2md/internal/extractor"
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
-// Element represents a logical document element (header, paragraph, etc.)
-type Element struct {
-	Type     ElementType
-	Content  string
-	Level    int     // For headers: 1-6, for lists: indent level
-	X        float64 // Bounding box
-	Y        float64
-	Width    float64
-	Height   float64
-	FontSize float64
-	LinkURI  string
-}
+// Type aliases for backward compatibility
+type Element = types.Element
+type ElementType = types.ElementType
 
-// ElementType defines the type of a document element
-type ElementType string
-
+// Re-export element type constants
 const (
-	ElementTypeHeader     ElementType = "header"
-	ElementTypeParagraph  ElementType = "paragraph"
-	ElementTypeCodeBlock  ElementType = "code_block"
-	ElementTypeList       ElementType = "list"
-	ElementTypeTable      ElementType = "table"
-	ElementTypeAdmonition ElementType = "admonition"
-	ElementTypeImage      ElementType = "image"
+	ElementTypeHeader     = types.ElementTypeHeader
+	ElementTypeParagraph  = types.ElementTypeParagraph
+	ElementTypeCodeBlock  = types.ElementTypeCodeBlock
+	ElementTypeList       = types.ElementTypeList
+	ElementTypeTable      = types.ElementTypeTable
+	ElementTypeAdmonition = types.ElementTypeAdmonition
+	ElementTypeImage      = types.ElementTypeImage
 )
 
 // Rule defines a classification rule for the layout analyzer

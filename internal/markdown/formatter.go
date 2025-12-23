@@ -5,7 +5,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/fjacquet/pdf2md/internal/layout"
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 // Formatter handles the formatting of document elements into Markdown
@@ -263,22 +263,22 @@ func normalizeTable(lines []string) string {
 }
 
 // FormatElement formats a single element using the appropriate template
-func (f *Formatter) FormatElement(element layout.Element) (string, error) {
+func (f *Formatter) FormatElement(element types.Element) (string, error) {
 	var tmpl *template.Template
 	switch element.Type {
-	case layout.ElementTypeHeader:
+	case types.ElementTypeHeader:
 		tmpl = f.HeaderTemplate
-	case layout.ElementTypeParagraph:
+	case types.ElementTypeParagraph:
 		tmpl = f.ParagraphTemplate
-	case layout.ElementTypeCodeBlock:
+	case types.ElementTypeCodeBlock:
 		tmpl = f.CodeBlockTemplate
-	case layout.ElementTypeList:
+	case types.ElementTypeList:
 		tmpl = f.ListTemplate
-	case layout.ElementTypeTable:
+	case types.ElementTypeTable:
 		tmpl = f.TableTemplate
-	case layout.ElementTypeAdmonition:
+	case types.ElementTypeAdmonition:
 		tmpl = f.AdmonitionTemplate
-	case layout.ElementTypeImage:
+	case types.ElementTypeImage:
 		tmpl = f.ImageTemplate
 	default:
 		return element.Content + "\n\n", nil
