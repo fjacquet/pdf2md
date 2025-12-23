@@ -30,4 +30,4 @@ clean:
 
 # Run the tool on the test file
 run-test: build
-	./$(BINARY_NAME) internal/testdata/test.pdf test.md
+	./$(BINARY_NAME) testdata/test.pdf test.md

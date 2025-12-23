@@ -25,6 +25,9 @@ go test -run TestFunctionName ./internal/layout/
 # Run tests with verbose output
 go test -v ./...
 
+# Run tests with coverage
+go test -cover ./...
+
 # Format code
 make fmt
 
@@ -53,7 +56,9 @@ make run-test
 The codebase follows a **pipeline architecture** with four main stages:
 
 ### 1. PDF Parser (`internal/pdf/`)
+
 Custom pure Go PDF parser that handles:
+
 - Cross-reference table parsing (`reader.go`)
 - Object reading: dictionaries, streams, arrays (`objects.go`, `parser.go`)
 - Content stream interpretation (`interpreter.go`, `content.go`)
@@ -62,12 +67,14 @@ Custom pure Go PDF parser that handles:
 - Stream filters: FlateDecode, ASCII85, etc. (`filters.go`)
 
 ### 2. Extraction Layer (`internal/extractor/`)
+
 - **Interface**: `PDFExtractor` in `extractor.go` allows swapping implementations
 - **Implementation**: `CustomExtractor` in `custom.go` uses the internal PDF parser
 - **Output**: `PageContent` containing `TextBlock`, `Image`, and `Graphics` arrays
 - Image/graphics saving utilities in `images.go` and `graphics.go`
 
 ### 3. Layout Analysis (`internal/layout/`)
+
 - **Column detection** - Analyzes X positions to find column boundaries
 - **Reading order** - `sorter.go` sorts blocks by column then Y position (top-to-bottom)
 - **Header detection** - Uses font size ratios (default 1.2x body text)
@@ -78,11 +85,13 @@ Custom pure Go PDF parser that handles:
 - **Exclusion zones** - Configurable top/bottom regions to skip (headers/footers)
 
 ### 4. Markdown Generation (`internal/markdown/`)
+
 - `builder.go` - Converts `Element` arrays to Markdown text
 - `formatter.go` - Text formatting utilities
 - Handles headers (H1-H6), paragraphs, lists, code blocks, tables, images
 
 ### Shared Types (`internal/types/`)
+
 - `TextBlock` - Text with position (X, Y, Width, Height), FontSize, FontName, LinkURI
 - `Image` - Extracted image with binary data and format
 - `Link` - Hyperlink with URI and bounding rectangle
@@ -105,8 +114,42 @@ Custom pure Go PDF parser that handles:
 
 ## Testing
 
-Test files go in `internal/testdata/`. Tests use the `_test.go` convention:
+Test PDFs go in `testdata/`. Tests use the `_test.go` convention:
+
 - `analyzer_test.go` - Layout analysis tests
 - `analyzer_fuzz_test.go` - Fuzz testing for robustness
 - `builder_test.go` - Markdown generation tests
 - `reader_test.go` - PDF parsing tests
+
+## Library Usage
+
+See `examples/basic_usage.go` for programmatic usage. Key steps:
+
+```go
+ext, _ := extractor.NewCustomExtractor(pdfPath)
+defer ext.Close()
+
+analyzer := layout.NewAnalyzer()
+builder := markdown.NewBuilder()
+
+for page := 1; page <= pageCount; page++ {
+    content, _ := ext.ExtractTextBlocks(page)  // 1-indexed
+    elements := analyzer.Analyze(content)
+    elements = analyzer.MergeElements(elements)
+    // ...
+}
+
+md := builder.Build(allElements)
+```
+
+## Element Types
+
+The analyzer classifies blocks into these element types (defined in `internal/layout/analyzer.go`):
+
+- `ElementTypeHeader` - H1-H6 headers (detected by font size ratio or numbering patterns)
+- `ElementTypeParagraph` - Regular text paragraphs
+- `ElementTypeCodeBlock` - Code blocks (detected by monospace fonts or content patterns)
+- `ElementTypeList` - Bulleted or numbered lists
+- `ElementTypeTable` - Table structures
+- `ElementTypeAdmonition` - NOTE, WARNING, TIP, etc. callouts
+- `ElementTypeImage` - Extracted images
