@@ -87,3 +87,88 @@ func (a *Analyzer) isPageNumber(text string) bool {
 
 	return false
 }
+
+// FilterRepeatedPageHeaders removes repeated page headers/footers
+// These are text elements that appear multiple times with the exact same content,
+// typically at similar Y positions (running headers/footers)
+func (a *Analyzer) FilterRepeatedPageHeaders(elements []Element) []Element {
+	if len(elements) < 2 {
+		return elements
+	}
+
+	// Count occurrences of each text content
+	contentCounts := make(map[string]int)
+	for _, el := range elements {
+		content := strings.TrimSpace(el.Content)
+		if content != "" && len(content) < 100 { // Only consider shorter text for page headers
+			contentCounts[content]++
+		}
+	}
+
+	// Find texts that appear 3+ times (likely page headers/footers)
+	repeatedContent := make(map[string]bool)
+	for content, count := range contentCounts {
+		if count >= 3 {
+			// Additional check: should look like a header (e.g., "CHAPTER X. TITLE" pattern)
+			if isLikelyPageHeader(content) {
+				repeatedContent[content] = true
+			}
+		}
+	}
+
+	// If no repeated content found, return as-is
+	if len(repeatedContent) == 0 {
+		return elements
+	}
+
+	// Filter out repeated page headers, keeping only the first occurrence
+	firstOccurrence := make(map[string]bool)
+	result := make([]Element, 0, len(elements))
+
+	for _, el := range elements {
+		content := strings.TrimSpace(el.Content)
+		if repeatedContent[content] {
+			if !firstOccurrence[content] {
+				// Keep the first occurrence
+				firstOccurrence[content] = true
+				result = append(result, el)
+			}
+			// Skip subsequent occurrences
+			continue
+		}
+		result = append(result, el)
+	}
+
+	return result
+}
+
+// isLikelyPageHeader checks if text looks like a page header
+func isLikelyPageHeader(text string) bool {
+	text = strings.TrimSpace(text)
+
+	// Pattern: "CHAPTER X. TITLE" or similar
+	if strings.HasPrefix(strings.ToUpper(text), "CHAPTER ") {
+		return true
+	}
+
+	// Pattern: "SECTION X. TITLE"
+	if strings.HasPrefix(strings.ToUpper(text), "SECTION ") {
+		return true
+	}
+
+	// Pattern: "PART X. TITLE"
+	if strings.HasPrefix(strings.ToUpper(text), "PART ") {
+		return true
+	}
+
+	// All uppercase short text (common for headers)
+	if text == strings.ToUpper(text) && len(text) > 5 && len(text) < 60 {
+		// Check if it's not a regular sentence (no common lowercase patterns)
+		wordCount := len(strings.Fields(text))
+		if wordCount >= 2 && wordCount <= 8 {
+			return true
+		}
+	}
+
+	return false
+}

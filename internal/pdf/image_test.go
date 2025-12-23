@@ -8,18 +8,22 @@ func TestImageExtraction(t *testing.T) {
 	// Create a mock interpreter with resources
 	fm := &FontManager{}
 
-	// Create a mock image stream
+	// Create a mock image stream - use 2x2 image with proper RGB data (12 bytes)
+	imageData := make([]byte, 12) // 2x2 pixels * 3 components (RGB)
+	for i := range imageData {
+		imageData[i] = byte(i * 20) // Some variation in color
+	}
+
 	imageStream := &Stream{
 		Dictionary: Dictionary{
 			Name("Type"):             Name("XObject"),
 			Name("Subtype"):          Name("Image"),
-			Name("Width"):            Integer(100),
-			Name("Height"):           Integer(100),
+			Name("Width"):            Integer(2),
+			Name("Height"):           Integer(2),
 			Name("ColorSpace"):       Name("DeviceRGB"),
 			Name("BitsPerComponent"): Integer(8),
-			// Name("Filter"):   Name("FlateDecode"), // Removed to avoid zlib error
 		},
-		Data: []byte{1, 2, 3, 4}, // Mock data
+		Data: imageData,
 	}
 
 	// Create resources dictionary with XObject

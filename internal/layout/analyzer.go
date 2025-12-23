@@ -275,7 +275,10 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 		prev = &elements[i]
 	}
 
-	// Step 5.5: Merge consecutive paragraph lines
+	// Step 6.5: Merge list item continuations (paragraphs following list items)
+	elements = a.MergeListContinuations(elements)
+
+	// Step 6.6: Merge consecutive paragraph lines
 	elements = a.MergeParagraphLines(elements)
 
 	// Step 7: Merge consecutive code blocks
@@ -291,8 +294,8 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	// Step 10: Filter page numbers
 	elements = a.FilterPageNumbers(elements)
 
-	// Step 11: Normalize header levels
-	elements = a.NormalizeHeaderLevels(elements)
+	// NOTE: Header level normalization is now done globally in the main pipeline
+	// after all pages are collected, not per-page
 
 	return elements
 }

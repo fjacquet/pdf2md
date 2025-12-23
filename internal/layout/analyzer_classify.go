@@ -16,12 +16,39 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 	for _, rule := range a.Rules {
 		if rule.Condition(text, element.FontSize, bodyFontSize) {
 			element.Type = rule.Type
+			// Special handling for numbered headers - calculate level from pattern
+			if rule.Name == "Header (Numbered)" {
+				element.Level = a.calculateNumberedHeaderLevel(text)
+			}
 			return
 		}
 	}
 
 	// 2. Fallback: Font Size for Headers (if available)
 	if element.FontSize > bodyFontSize*a.HeaderSizeRatio {
+		// Check if this looks like a header or just mid-sentence large text
+		// Headers MUST start with uppercase, digit, or CHAPTER/section keywords
+		cleanText := strings.TrimSpace(text)
+		if strings.HasPrefix(cleanText, "**") {
+			cleanText = strings.TrimPrefix(cleanText, "**")
+		}
+
+		// Find the first actual character (skip whitespace)
+		firstChar := rune(0)
+		for _, r := range cleanText {
+			if !unicode.IsSpace(r) {
+				firstChar = r
+				break
+			}
+		}
+
+		// Headers must start with uppercase letter or digit
+		isValidHeaderStart := unicode.IsUpper(firstChar) || unicode.IsDigit(firstChar)
+		if !isValidHeaderStart {
+			element.Type = ElementTypeParagraph
+			return
+		}
+
 		element.Type = ElementTypeHeader
 		element.Level = a.calculateHeaderLevel(element.FontSize, bodyFontSize)
 		// Strip bold markers from headers (formatting is already implied by header level)
@@ -69,16 +96,22 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 		}
 
 		if prev.Type == ElementTypeList {
-			if element.X-prev.X < 5.0 && element.X-prev.X > -5.0 {
-				element.Type = ElementTypeList
-				element.Level = prev.Level
-				return
+			// Only create new list items if the current text starts with a bullet marker
+			// Otherwise, it's likely a continuation of the previous list item
+			if a.isListItem(text) {
+				if element.X-prev.X < 5.0 && element.X-prev.X > -5.0 {
+					element.Type = ElementTypeList
+					element.Level = prev.Level
+					return
+				}
+				if element.X > prev.X+5.0 {
+					element.Type = ElementTypeList
+					element.Level = prev.Level + 1
+					return
+				}
 			}
-			if element.X > prev.X+5.0 {
-				element.Type = ElementTypeList
-				element.Level = prev.Level + 1
-				return
-			}
+			// Non-bullet lines after list items will remain as paragraphs
+			// They should be merged with the previous list item during MergeListContinuations
 		}
 	}
 
@@ -94,6 +127,7 @@ func (a *Analyzer) isNumberedHeader(text string) bool {
 	}
 
 	marker := parts[0]
+	rest := parts[1]
 	if len(marker) == 0 {
 		return false
 	}
@@ -133,7 +167,81 @@ func (a *Analyzer) isNumberedHeader(text string) bool {
 		}
 	}
 
+	// Distinguish numbered headers from numbered list items:
+	// - Simple single-digit markers like "1." followed by a sentence are list items
+	// - Multi-part markers like "3.1.4." are headers
+	// - Markers where rest starts with uppercase and is short (< ~60 chars) are headers
+	if !hasInternalDot {
+		// Simple "1.", "2.", etc. - likely a list item unless rest is short and uppercase
+		restTrimmed := strings.TrimSpace(rest)
+		if len(restTrimmed) == 0 {
+			return false
+		}
+		// If rest is long (likely a sentence), it's a list item, not a header
+		if len(restTrimmed) > 80 {
+			return false
+		}
+		// If rest ends with a period (sentence), it's likely a list item
+		if strings.HasSuffix(restTrimmed, ".") && len(restTrimmed) >= 25 {
+			return false
+		}
+		// If rest starts with "The", "A", "An" + moderate length text, it's a list item
+		lowerRest := strings.ToLower(restTrimmed)
+		if strings.HasPrefix(lowerRest, "the ") ||
+			strings.HasPrefix(lowerRest, "a ") ||
+			strings.HasPrefix(lowerRest, "an ") {
+			if len(restTrimmed) > 40 {
+				return false
+			}
+		}
+		// If rest contains common sentence patterns, it's a list item
+		if strings.Contains(lowerRest, " is ") ||
+			strings.Contains(lowerRest, " are ") ||
+			strings.Contains(lowerRest, " will ") ||
+			strings.Contains(lowerRest, " can ") {
+			if len(restTrimmed) > 35 {
+				return false
+			}
+		}
+	}
+
 	return true
+}
+
+// calculateNumberedHeaderLevel determines header level from a numbered pattern
+// e.g., "3." -> 1, "3.1." -> 2, "3.1.4." -> 3, "3.1.4.1." -> 4
+func (a *Analyzer) calculateNumberedHeaderLevel(text string) int {
+	parts := strings.SplitN(text, " ", 2)
+	if len(parts) < 1 {
+		return 2 // default fallback
+	}
+
+	marker := parts[0]
+
+	// Check for Roman numeral headers - these are typically top-level
+	romanNumerals := []string{
+		"I.", "II.", "III.", "IV.", "V.", "VI.", "VII.", "VIII.", "IX.", "X.",
+		"XI.", "XII.", "XIII.", "XIV.", "XV.",
+	}
+	for _, rn := range romanNumerals {
+		if marker == rn {
+			return 1
+		}
+	}
+
+	// Count dots in the marker to determine level
+	// "3." has 1 dot -> level 1
+	// "3.1." has 2 dots -> level 2
+	// "3.1.4." has 3 dots -> level 3
+	markerToCheck := strings.TrimSuffix(marker, ".")
+	dotCount := strings.Count(markerToCheck, ".") + 1 // +1 because "3" has 0 dots but is level 1
+
+	// Cap at level 6
+	if dotCount > 6 {
+		dotCount = 6
+	}
+
+	return dotCount
 }
 
 // isCodeBlock checks if the text looks like a code block

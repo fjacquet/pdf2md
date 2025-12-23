@@ -140,14 +140,17 @@ func TestInterpreter_HandleTextShow(t *testing.T) {
 		t.Errorf("Expected text 'Hello', got '%s'", in.TextBlocks[0].Text)
 	}
 
-	// TJ
+	// TJ - now merges text with spacing adjustments into single block
 	in.Stack = []Object{Array{StringLiteral("A"), Integer(-1000), StringLiteral("B")}}
 	if err := in.handleTextShow("TJ"); err != nil {
 		t.Errorf("TJ failed: %v", err)
 	}
-	// Should produce 2 blocks (A and B)
-	if len(in.TextBlocks) != 3 { // Hello, A, B
-		t.Errorf("Expected 3 text blocks, got %d", len(in.TextBlocks))
+	// Should produce 1 block "A B" (large negative adjustment inserts space)
+	if len(in.TextBlocks) != 2 { // Hello, "A B"
+		t.Errorf("Expected 2 text blocks, got %d", len(in.TextBlocks))
+	}
+	if in.TextBlocks[1].Text != "A B" {
+		t.Errorf("Expected text 'A B', got '%s'", in.TextBlocks[1].Text)
 	}
 
 	// ' (Tick)
@@ -155,8 +158,8 @@ func TestInterpreter_HandleTextShow(t *testing.T) {
 	if err := in.handleTextShow("'"); err != nil {
 		t.Errorf("' failed: %v", err)
 	}
-	if len(in.TextBlocks) != 4 {
-		t.Errorf("Expected 4 text blocks, got %d", len(in.TextBlocks))
+	if len(in.TextBlocks) != 3 {
+		t.Errorf("Expected 3 text blocks, got %d", len(in.TextBlocks))
 	}
 
 	// " (Quote)

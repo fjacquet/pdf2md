@@ -91,14 +91,8 @@ func (in *Interpreter) handleInlineImage(tokenizer *Tokenizer) error {
 
 	// Get position from current CTM
 	x, y := in.State.CTM.Transform(0, 0)
-	imgWidth := in.State.CTM[0]
-	imgHeight := in.State.CTM[3]
-
-	// Determine format
-	format := "png" // Default
-	if filter == "DCTDecode" || filter == "DCT" {
-		format = "jpeg"
-	}
+	ctmWidth := in.State.CTM[0]
+	ctmHeight := in.State.CTM[3]
 
 	// Generate unique ID
 	imageID := fmt.Sprintf("inline_%d", len(in.Images))
@@ -108,14 +102,39 @@ func (in *Interpreter) handleInlineImage(tokenizer *Tokenizer) error {
 		return nil
 	}
 
+	// Check if it's JPEG
+	isJPEG := filter == "DCTDecode" || filter == "DCT"
+
+	if isJPEG {
+		// JPEG data is already properly encoded
+		in.Images = append(in.Images, types.Image{
+			ID:     imageID,
+			Data:   data,
+			Format: "jpeg",
+			X:      x,
+			Y:      y,
+			Width:  ctmWidth,
+			Height: ctmHeight,
+		})
+		return nil
+	}
+
+	// For non-JPEG, encode raw pixel data as PNG
+	pngData, err := encodePNG(data, width, height, components, bpc)
+	if err != nil {
+		// If encoding fails, skip this image
+		fmt.Printf("Warning: Failed to encode inline image as PNG: %v\n", err)
+		return nil
+	}
+
 	in.Images = append(in.Images, types.Image{
 		ID:     imageID,
-		Data:   data,
-		Format: format,
+		Data:   pngData,
+		Format: "png",
 		X:      x,
 		Y:      y,
-		Width:  imgWidth,
-		Height: imgHeight,
+		Width:  ctmWidth,
+		Height: ctmHeight,
 	})
 
 	return nil

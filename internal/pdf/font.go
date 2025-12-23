@@ -470,16 +470,28 @@ func (f *Font) DecodeString(s string) string {
 		for i < len(data) {
 			var code int
 			if isComposite && i+1 < len(data) {
-				// Try 2 bytes
+				// Try 2 bytes first
 				code = int(data[i])<<8 | int(data[i+1])
 				if val, ok := f.ToUnicode[code]; ok {
 					res.WriteString(val)
 					i += 2
 					continue
 				}
-				// Fallback: if not found, maybe it's ASCII?
-				// Or maybe we should output the CID?
-				i += 2
+				// Try 1 byte if 2-byte not found (some fonts mix encodings)
+				code = int(data[i])
+				if val, ok := f.ToUnicode[code]; ok {
+					res.WriteString(val)
+					i++
+					continue
+				}
+				// Fallback: treat as ASCII if printable
+				if data[i] >= 32 && data[i] < 127 {
+					res.WriteByte(data[i])
+					i++
+				} else {
+					i += 2 // Skip 2-byte code we can't decode
+				}
+				continue
 			} else {
 				// 1 byte
 				code = int(data[i])

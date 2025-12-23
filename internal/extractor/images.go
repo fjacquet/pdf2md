@@ -59,6 +59,11 @@ func SaveGraphics(graphics []types.VectorGraphic, outputDir, prefix string) ([]s
 
 	var savedPaths []string
 	for i, vg := range graphics {
+		// Skip trivial graphics (simple rectangles, lines, decorative elements)
+		if IsTrivialGraphic(vg) {
+			continue
+		}
+
 		// Generate filename
 		filename := vg.ID
 		if filename == "" {

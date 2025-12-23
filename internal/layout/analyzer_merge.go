@@ -8,11 +8,70 @@ import (
 	"unicode"
 )
 
+// MergeDropCaps merges drop cap letters with their following text
+// Drop caps are large initial letters that appear at the start of paragraphs
+func (a *Analyzer) MergeDropCaps(elements []Element) []Element {
+	if len(elements) <= 1 {
+		return elements
+	}
+
+	merged := make([]Element, 0, len(elements))
+
+	for i := 0; i < len(elements); i++ {
+		current := elements[i]
+
+		// Check if this could be a drop cap:
+		// 1. Single uppercase letter (or 1-2 chars)
+		// 2. Followed by text that starts with lowercase or continues the word
+		content := strings.TrimSpace(current.Content)
+		if len(content) <= 2 && i+1 < len(elements) {
+			next := elements[i+1]
+			nextContent := strings.TrimSpace(next.Content)
+
+			// Check if content is uppercase letter(s)
+			isUpperStart := len(content) > 0 && unicode.IsUpper(rune(content[0]))
+
+			// Check if next starts with lowercase (continuation)
+			startsLower := len(nextContent) > 0 && unicode.IsLower(rune(nextContent[0]))
+
+			// Check proximity - drop caps are usually close horizontally or vertically aligned
+			xGap := next.X - (current.X + current.Width)
+			yDiff := math.Abs(current.Y - next.Y)
+
+			// Drop cap detection: single/double uppercase followed by lowercase text
+			// with reasonable proximity (within 3x font size horizontally, 2x vertically)
+			isDropCap := isUpperStart && startsLower &&
+				xGap < current.FontSize*3 && xGap > -current.FontSize &&
+				yDiff < current.FontSize*2
+
+			// Also check for larger font size (drop caps are often bigger)
+			if current.FontSize > next.FontSize*1.3 {
+				isDropCap = isUpperStart && startsLower && xGap < current.FontSize*5
+			}
+
+			if isDropCap {
+				// Merge drop cap with following text
+				current.Content = content + nextContent
+				current.Width = next.X + next.Width - current.X
+				current.FontSize = next.FontSize // Use the body text font size
+				i++ // Skip next element
+			}
+		}
+
+		merged = append(merged, current)
+	}
+
+	return merged
+}
+
 // MergeElements merges consecutive text elements on the same line
 func (a *Analyzer) MergeElements(elements []Element) []Element {
 	if len(elements) <= 1 {
 		return elements
 	}
+
+	// First, merge drop caps
+	elements = a.MergeDropCaps(elements)
 
 	merged := make([]Element, 0, len(elements))
 	current := elements[0]
@@ -25,9 +84,12 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 		if yDiff < 2.0 {
 			gap := next.X - (current.X + current.Width)
 
-			threshold := current.FontSize * 0.1
+			// Use a more lenient threshold for merging
+			// Small gaps (< 30% of font size) should merge without separator
+			// This helps with kerned text and special styling
+			threshold := current.FontSize * 0.3
 			if threshold == 0 {
-				threshold = 1.0
+				threshold = 2.0
 			}
 
 			wideGapThreshold := 30.0
@@ -39,7 +101,16 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 			case gap < threshold:
 				current = a.mergeElementsWithLinks(current, next, "")
 			case gap > wideGapThreshold:
-				if len(current.Content) > 40 || len(next.Content) > 40 {
+				// Check if current is a bullet character that should merge with next
+				isBullet := strings.TrimSpace(current.Content) == "•" ||
+					strings.TrimSpace(current.Content) == "-" ||
+					strings.TrimSpace(current.Content) == "▪" ||
+					strings.TrimSpace(current.Content) == "◦"
+
+				if isBullet {
+					// Bullet should always merge with following text
+					current = a.mergeElementsWithLinks(current, next, " ")
+				} else if len(current.Content) > 40 || len(next.Content) > 40 {
 					merged = append(merged, current)
 					current = next
 				} else {
@@ -230,6 +301,119 @@ func (a *Analyzer) validateTable(current *Element) *Element {
 	}
 
 	return current
+}
+
+// MergeListContinuations merges paragraph elements that follow list items into those list items
+// This handles cases where multi-line list items are split across multiple elements
+func (a *Analyzer) MergeListContinuations(elements []Element) []Element {
+	if len(elements) <= 1 {
+		return elements
+	}
+
+	merged := make([]Element, 0, len(elements))
+	i := 0
+
+	for i < len(elements) {
+		current := elements[i]
+
+		// If this is a list item, check for continuation paragraphs
+		if current.Type == ElementTypeList {
+			// Collect continuation lines
+			j := i + 1
+			for j < len(elements) {
+				next := elements[j]
+
+				// Stop if we hit another list item, header, code block, table, or image
+				if next.Type != ElementTypeParagraph {
+					break
+				}
+
+				// Stop if this paragraph starts with a list marker (it's a new item)
+				if a.isListItem(next.Content) {
+					break
+				}
+
+				// Check if this looks like a continuation based on content patterns
+				if !a.isListContinuation(current.Content, next.Content) {
+					break
+				}
+
+				// Merge the continuation into the list item
+				content := strings.TrimSpace(next.Content)
+				if content != "" {
+					if !strings.HasSuffix(current.Content, " ") && !strings.HasSuffix(current.Content, "-") {
+						current.Content += " "
+					}
+					current.Content += content
+				}
+
+				j++
+			}
+
+			merged = append(merged, current)
+			i = j
+		} else {
+			merged = append(merged, current)
+			i++
+		}
+	}
+
+	return merged
+}
+
+// isListContinuation checks if nextContent looks like a continuation of currentContent
+func (a *Analyzer) isListContinuation(currentContent, nextContent string) bool {
+	current := strings.TrimSpace(currentContent)
+	next := strings.TrimSpace(nextContent)
+
+	if len(next) == 0 {
+		return false
+	}
+
+	// Strip markdown formatting from the end of current for checking
+	cleanCurrent := current
+	if strings.HasSuffix(cleanCurrent, "**") {
+		cleanCurrent = strings.TrimSuffix(cleanCurrent, "**")
+	} else if strings.HasSuffix(cleanCurrent, "*") {
+		cleanCurrent = strings.TrimSuffix(cleanCurrent, "*")
+	}
+	cleanCurrent = strings.TrimSpace(cleanCurrent)
+
+	// Check if current ends without sentence-ending punctuation
+	endsWithPunctuation := strings.HasSuffix(cleanCurrent, ".") ||
+		strings.HasSuffix(cleanCurrent, "!") ||
+		strings.HasSuffix(cleanCurrent, "?") ||
+		strings.HasSuffix(cleanCurrent, ":")
+
+	// Strip markdown formatting from start of next for checking
+	cleanNext := next
+	if strings.HasPrefix(cleanNext, "**") {
+		cleanNext = strings.TrimPrefix(cleanNext, "**")
+	} else if strings.HasPrefix(cleanNext, "*") {
+		cleanNext = strings.TrimPrefix(cleanNext, "*")
+	}
+	cleanNext = strings.TrimSpace(cleanNext)
+
+	// Get the first character of next content
+	firstChar := rune(0)
+	for _, r := range cleanNext {
+		firstChar = r
+		break
+	}
+
+	// Strong continuation indicator: current ends without punctuation and next starts lowercase
+	if !endsWithPunctuation && unicode.IsLower(firstChar) {
+		return true
+	}
+
+	// Also consider continuation if next is short and doesn't look like a new sentence
+	// (e.g., "applications." could be the end of a multi-line list item)
+	if len(cleanNext) < 100 && !endsWithPunctuation {
+		// If current doesn't end with punctuation, continue until we find an ending
+		return true
+	}
+
+	return false
 }
 
 // MergeParagraphLines merges consecutive paragraph lines

@@ -66,12 +66,15 @@ func TestSaveGraphics(t *testing.T) {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
+	// Use a complex graphic with curves (not filtered as trivial)
 	graphics := []types.VectorGraphic{
 		{
 			ID: "graphic1",
 			Operations: []types.PathOperation{
 				{Type: types.PathOpMoveTo, Points: []types.Point{{X: 0, Y: 0}}},
-				{Type: types.PathOpLineTo, Points: []types.Point{{X: 10, Y: 10}}},
+				{Type: types.PathOpCurveTo, Points: []types.Point{{X: 5, Y: 10}, {X: 15, Y: 10}, {X: 20, Y: 0}}},
+				{Type: types.PathOpLineTo, Points: []types.Point{{X: 10, Y: 20}}},
+				{Type: types.PathOpClose, Points: nil},
 			},
 			Width:  100,
 			Height: 100,

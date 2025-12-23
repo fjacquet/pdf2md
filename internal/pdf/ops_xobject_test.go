@@ -5,15 +5,21 @@ import (
 )
 
 func TestInterpreter_HandleXObject(t *testing.T) {
-	// Setup resources
+	// Setup resources - need valid RGB data for 2x2 image (12 bytes for RGB)
+	imageData := make([]byte, 12) // 2x2 pixels * 3 components
+	for i := range imageData {
+		imageData[i] = byte(i * 20) // Some variation in color
+	}
+
 	imageStream := Stream{
 		Dictionary: Dictionary{
-			Name("Type"):    Name("XObject"),
-			Name("Subtype"): Name("Image"),
-			Name("Width"):   Integer(100),
-			Name("Height"):  Integer(100),
+			Name("Type"):       Name("XObject"),
+			Name("Subtype"):    Name("Image"),
+			Name("Width"):      Integer(2),
+			Name("Height"):     Integer(2),
+			Name("ColorSpace"): Name("DeviceRGB"),
 		},
-		Data: []byte{1, 2, 3, 4},
+		Data: imageData,
 	}
 
 	resources := Dictionary{
@@ -33,7 +39,7 @@ func TestInterpreter_HandleXObject(t *testing.T) {
 	if len(in.Images) != 1 {
 		t.Errorf("Expected 1 image, got %d", len(in.Images))
 	}
-	if in.Images[0].ID != "Im1" {
+	if len(in.Images) > 0 && in.Images[0].ID != "Im1" {
 		t.Errorf("Expected image ID 'Im1', got '%s'", in.Images[0].ID)
 	}
 
@@ -61,13 +67,15 @@ func TestInterpreter_ExtractImage_Filters(t *testing.T) {
 	// Since DecodeStream is in another file and hard to mock without dependency injection,
 	// we will test the logic flow.
 
-	// Filter: DCTDecode (JPEG)
+	// Filter: DCTDecode (JPEG) - JPEG data is passed through directly
 	jpegStream := Stream{
 		Dictionary: Dictionary{
 			Name("Subtype"): Name("Image"),
 			Name("Filter"):  Name("DCTDecode"),
+			Name("Width"):   Integer(1),
+			Name("Height"):  Integer(1),
 		},
-		Data: []byte{0xFF, 0xD8, 0xFF},
+		Data: []byte{0xFF, 0xD8, 0xFF, 0xE0}, // JPEG magic bytes
 	}
 
 	resources := Dictionary{

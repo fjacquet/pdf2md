@@ -144,26 +144,59 @@ func (in *Interpreter) handleTextShow(op string) error {
 		in.Stack = in.Stack[:len(in.Stack)-1]
 
 		if arr, ok := arrObj.(Array); ok {
+			// Process TJ array more intelligently:
+			// - Small adjustments (< 200 units) are kerning within words
+			// - Large adjustments (>= 200 units) are word spaces
+			// Collect text and only split on large adjustments
+			var textBuffer string
+			var rawBuffer string
+			startX := in.Tm[4]
+			startY := in.Tm[5]
+
 			for _, item := range arr {
 				if s, ok := item.(StringLiteral); ok {
-					if err := in.showText(s); err != nil {
-						return err
-					}
+					rawBuffer += string(s)
+					textBuffer += in.decodeText(string(s))
 				} else if s, ok := item.(HexString); ok {
-					if err := in.showText(s); err != nil {
-						return err
-					}
+					b, _ := hex.DecodeString(string(s))
+					rawBuffer += string(b)
+					textBuffer += in.decodeText(string(b))
 				} else if n, ok := item.(Integer); ok {
-					// Adjustment: -n / 1000 * Tfs
+					// Adjustment value in thousandths of em
+					// Positive = move left (tightening), Negative = move right (spacing)
+					// Large negative values (< -200) typically indicate word space
+					if n < -200 {
+						// This is a word space - insert space in text
+						textBuffer += " "
+					}
+					// Apply position adjustment
 					adj := -float64(n) / 1000.0 * in.State.Tfs
 					in.Tm[4] += adj * in.Tm[0]
 					in.Tm[5] += adj * in.Tm[1]
 				} else if f, ok := item.(Real); ok {
-					// Adjustment
+					if f < -200 {
+						textBuffer += " "
+					}
 					adj := -float64(f) / 1000.0 * in.State.Tfs
 					in.Tm[4] += adj * in.Tm[0]
 					in.Tm[5] += adj * in.Tm[1]
 				}
+			}
+
+			// Create single text block for entire TJ array
+			if textBuffer != "" {
+				// Restore start position for block creation
+				savedTmX, savedTmY := in.Tm[4], in.Tm[5]
+				in.Tm[4], in.Tm[5] = startX, startY
+
+				width := 0.0
+				if in.FontManager != nil && rawBuffer != "" {
+					width = in.FontManager.CalculateWidth(in.State.Tf, rawBuffer) * in.State.Tfs / 1000.0
+				}
+				in.addTextBlock(textBuffer, width)
+
+				// Restore end position
+				in.Tm[4], in.Tm[5] = savedTmX, savedTmY
 			}
 		}
 
