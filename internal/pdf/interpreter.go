@@ -59,7 +59,7 @@ func (in *Interpreter) Process(content []byte) ([]types.TextBlock, []types.Image
 
 		if tok.Type == TokenKeyword {
 			// Operator
-			if err := in.executeOperator(tok.Value); err != nil {
+			if err := in.executeOperatorWithTokenizer(tok.Value, t); err != nil {
 				return nil, nil, nil, err
 			}
 		} else {
@@ -78,6 +78,10 @@ func (in *Interpreter) Process(content []byte) ([]types.TextBlock, []types.Image
 }
 
 func (in *Interpreter) executeOperator(op string) error {
+	return in.executeOperatorWithTokenizer(op, nil)
+}
+
+func (in *Interpreter) executeOperatorWithTokenizer(op string, tokenizer *Tokenizer) error {
 	switch op {
 	// Text Object
 	case "BT", "ET":
@@ -110,6 +114,14 @@ func (in *Interpreter) executeOperator(op string) error {
 	// XObject
 	case "Do":
 		return in.handleXObject(op)
+
+	// Inline Image
+	case "BI":
+		if tokenizer != nil {
+			return in.handleInlineImage(tokenizer)
+		}
+		// If no tokenizer available, skip
+		return nil
 
 	default:
 		// Unknown operator, clear stack to be safe

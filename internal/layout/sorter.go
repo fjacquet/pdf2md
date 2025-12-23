@@ -275,12 +275,80 @@ func detectAndSortColumns(blocks []extractor.TextBlock) []extractor.TextBlock {
 	}
 
 	// 7. Process Segments
-	// Sort each group
-	sortedLeft := detectAndSortColumns(left)      // Recurse
-	sortedRight := detectAndSortColumns(right)    // Recurse
-	sortedSpanning := detectAndSortRows(spanning) // Spanning blocks might need Y-sorting/splitting
+	// For proper reading order in two-column layouts:
+	// - Spanning blocks should be read BEFORE the columns they appear above
+	// - Columns should be read left-to-right, top-to-bottom within each column
+	// - Spanning blocks at the bottom should come after both columns
 
-	return append(append(sortedLeft, sortedRight...), sortedSpanning...)
+	// First, separate spanning blocks into those above, between, and below the columns
+	sortedSpanning := sortY(spanning)
+
+	// Get Y bounds of left and right columns
+	leftMinY, leftMaxY := getYBounds(left)
+	rightMinY, rightMaxY := getYBounds(right)
+
+	// Column content Y range (use the combined range)
+	columnMinY := math.Min(leftMinY, rightMinY)
+	columnMaxY := math.Max(leftMaxY, rightMaxY)
+
+	// Split spanning blocks by position relative to columns
+	var spanningAbove, spanningBelow []extractor.TextBlock
+	for _, b := range sortedSpanning {
+		blockTop := b.Y + b.Height
+		blockBottom := b.Y
+
+		if blockBottom >= columnMaxY {
+			// Block is entirely above the columns
+			spanningAbove = append(spanningAbove, b)
+		} else if blockTop <= columnMinY {
+			// Block is entirely below the columns
+			spanningBelow = append(spanningBelow, b)
+		} else {
+			// Block overlaps with column region - need more careful handling
+			// Check if it's primarily above or below the middle of columns
+			columnMidY := (columnMinY + columnMaxY) / 2
+			if b.Y > columnMidY {
+				spanningAbove = append(spanningAbove, b)
+			} else {
+				spanningBelow = append(spanningBelow, b)
+			}
+		}
+	}
+
+	// Sort each group recursively
+	sortedLeft := detectAndSortColumns(left)
+	sortedRight := detectAndSortColumns(right)
+
+	// Combine in proper reading order:
+	// 1. Spanning content above columns (titles, headers)
+	// 2. Left column content (top to bottom)
+	// 3. Right column content (top to bottom)
+	// 4. Spanning content below columns (footers, references)
+	var result []extractor.TextBlock
+	result = append(result, spanningAbove...)
+	result = append(result, sortedLeft...)
+	result = append(result, sortedRight...)
+	result = append(result, spanningBelow...)
+
+	return result
+}
+
+// getYBounds returns the minimum and maximum Y coordinates for a set of blocks
+func getYBounds(blocks []extractor.TextBlock) (minY, maxY float64) {
+	if len(blocks) == 0 {
+		return 0, 0
+	}
+	minY = blocks[0].Y
+	maxY = blocks[0].Y + blocks[0].Height
+	for _, b := range blocks[1:] {
+		if b.Y < minY {
+			minY = b.Y
+		}
+		if b.Y+b.Height > maxY {
+			maxY = b.Y + b.Height
+		}
+	}
+	return
 }
 
 func detectAndSortRows(blocks []extractor.TextBlock) []extractor.TextBlock {

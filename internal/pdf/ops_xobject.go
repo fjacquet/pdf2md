@@ -17,7 +17,6 @@ func (in *Interpreter) handleXObject(op string) error {
 		if !ok {
 			return fmt.Errorf("invalid operand for Do: expected Name")
 		}
-		fmt.Printf("DEBUG: Do operator called for %s\n", name)
 		in.Stack = in.Stack[:len(in.Stack)-1]
 		if err := in.processXObject(name); err != nil {
 			return err
@@ -72,57 +71,102 @@ func (in *Interpreter) processXObject(name Name) error {
 	}
 
 	subtype, _ := stream.Dictionary[Name("Subtype")].(Name)
-	fmt.Printf("DEBUG: XObject %s Subtype=%s\n", name, subtype)
 
 	if subtype == "Image" {
 		return in.extractImage(name, stream)
 	} else if subtype == "Form" {
-		// TODO: Handle Form XObjects (nested content)
+		return in.processFormXObject(name, stream)
+	}
+
+	return nil
+}
+
+// processFormXObject handles Form XObjects which contain nested content streams
+func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
+
+	// Get the Form's Resources dictionary (may inherit from parent)
+	var formResources Dictionary
+	if res, ok := stream.Dictionary[Name("Resources")].(Dictionary); ok {
+		formResources = res
+	} else if ref, ok := stream.Dictionary[Name("Resources")].(IndirectRef); ok {
+		// Resolve indirect reference
+		if in.FontManager != nil && in.FontManager.reader != nil {
+			resolved, err := in.FontManager.reader.ReadObject(ref.ObjectNumber)
+			if err == nil {
+				if dict, ok := resolved.(Dictionary); ok {
+					formResources = dict
+				}
+			}
+		}
+	}
+
+	// If no Form Resources, use parent Resources
+	if formResources == nil {
+		formResources = in.Resources
+	}
+
+	// Get the Form's Matrix (transformation matrix)
+	formMatrix := IdentityMatrix()
+	if matrixArr, ok := stream.Dictionary[Name("Matrix")].(Array); ok && len(matrixArr) == 6 {
+		formMatrix = Matrix{
+			toFloat(matrixArr[0]), toFloat(matrixArr[1]),
+			toFloat(matrixArr[2]), toFloat(matrixArr[3]),
+			toFloat(matrixArr[4]), toFloat(matrixArr[5]),
+		}
+	}
+
+	// Decode the Form's content stream
+	data, err := DecodeStreamFromDict(stream.Data, stream.Dictionary)
+	if err != nil {
+		fmt.Printf("Warning: Failed to decode Form XObject %s: %v\n", name, err)
+		return nil // Don't fail the page for a single XObject
+	}
+
+	// Save current graphics state
+	in.StateStack = append(in.StateStack, in.State)
+
+	// Apply the Form's Matrix to CTM
+	// CTM = CTM * FormMatrix
+	in.State.CTM = in.State.CTM.Multiply(formMatrix)
+
+	// Create a sub-interpreter for the Form content
+	// Note: We reuse the same FontManager as it contains all font definitions
+	subInterpreter := NewInterpreter(in.FontManager, formResources)
+
+	// Copy current CTM so Form content is positioned correctly
+	subInterpreter.State.CTM = in.State.CTM
+
+	// Process the Form content
+	textBlocks, images, graphics, err := subInterpreter.Process(data)
+	if err != nil {
+		fmt.Printf("Warning: Error processing Form XObject %s: %v\n", name, err)
+		// Restore state and continue
+		if len(in.StateStack) > 0 {
+			in.State = in.StateStack[len(in.StateStack)-1]
+			in.StateStack = in.StateStack[:len(in.StateStack)-1]
+		}
+		return nil
+	}
+
+	// Merge results from sub-interpreter
+	in.TextBlocks = append(in.TextBlocks, textBlocks...)
+	in.Images = append(in.Images, images...)
+	in.Graphics = append(in.Graphics, graphics...)
+
+	// Restore graphics state
+	if len(in.StateStack) > 0 {
+		in.State = in.StateStack[len(in.StateStack)-1]
+		in.StateStack = in.StateStack[:len(in.StateStack)-1]
 	}
 
 	return nil
 }
 
 func (in *Interpreter) extractImage(name Name, stream *Stream) error {
-	// Extract image data
-	// Apply filters
-	data := stream.Data
-
-	// Check filter
-	if filter, ok := stream.Dictionary[Name("Filter")].(Name); ok {
-		var decodeParms Dictionary
-		if parms, ok := stream.Dictionary[Name("DecodeParms")].(Dictionary); ok {
-			decodeParms = parms
-		}
-		decoded, err := DecodeStream(data, filter, decodeParms)
-		if err != nil {
-			return err
-		}
-		data = decoded
-	} else if filters, ok := stream.Dictionary[Name("Filter")].(Array); ok {
-		// Multiple filters
-		// DecodeParms can be an array or a single dictionary (if only one filter needs it?)
-		// Standard says: "If there is only one filter, DecodeParms is a dictionary... If there are multiple filters, DecodeParms is an array..."
-		var decodeParmsArr Array
-		if parmsArr, ok := stream.Dictionary[Name("DecodeParms")].(Array); ok {
-			decodeParmsArr = parmsArr
-		}
-
-		for i, f := range filters {
-			if filterName, ok := f.(Name); ok {
-				var decodeParms Dictionary
-				if i < len(decodeParmsArr) {
-					if parms, ok := decodeParmsArr[i].(Dictionary); ok {
-						decodeParms = parms
-					}
-				}
-				decoded, err := DecodeStream(data, filterName, decodeParms)
-				if err != nil {
-					return err
-				}
-				data = decoded
-			}
-		}
+	// Extract image data - apply filters
+	data, err := DecodeStreamFromDict(stream.Data, stream.Dictionary)
+	if err != nil {
+		return err
 	}
 
 	// Get dimensions from CTM

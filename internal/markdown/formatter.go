@@ -27,7 +27,8 @@ func NewFormatter() *Formatter {
 	f.CodeBlockTemplate = parseTemplate("code_block", "```\n{{.Content}}\n```\n\n")
 	// List template handles ordered vs unordered
 	f.ListTemplate = parseTemplate("list", "{{indent .Level}}{{listMarker .Content}} {{cleanList .Content}}\n")
-	f.TableTemplate = parseTemplate("table", "{{.Content}}\n\n")
+	// Table template uses formatTable to ensure proper markdown table syntax
+	f.TableTemplate = parseTemplate("table", "{{formatTable .Content}}\n\n")
 	// Admonition template handles keyword bolding
 	f.AdmonitionTemplate = parseTemplate("admonition", "{{formatAdmonition .Content}}\n\n")
 	f.ImageTemplate = parseTemplate("image", "![Image]({{.Content}})\n\n")
@@ -107,6 +108,7 @@ func parseTemplate(name, tmpl string) *template.Template {
 			}
 			return sb.String()
 		},
+		"formatTable": formatTable,
 	})
 	return template.Must(t.Parse(tmpl))
 }
@@ -124,6 +126,140 @@ func isOrdered(content string) bool {
 		return len(prefix) > 0
 	}
 	return false
+}
+
+// formatTable ensures proper markdown table syntax with separator line
+func formatTable(content string) string {
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 {
+		return content
+	}
+
+	// Check if table already has a separator line
+	hasSeparator := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if isSeparatorLine(trimmed) {
+			hasSeparator = true
+			break
+		}
+	}
+
+	if hasSeparator {
+		// Already properly formatted
+		return normalizeTable(lines)
+	}
+
+	// Need to add separator after first row
+	if len(lines) < 1 {
+		return content
+	}
+
+	// Parse first row to determine column count
+	firstRow := lines[0]
+	numCols := countColumns(firstRow)
+	if numCols < 1 {
+		return content
+	}
+
+	// Build separator line
+	separator := buildSeparator(numCols)
+
+	// Reconstruct table with separator
+	var sb strings.Builder
+	sb.WriteString(normalizeRow(lines[0]))
+	sb.WriteString("\n")
+	sb.WriteString(separator)
+
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) != "" {
+			sb.WriteString("\n")
+			sb.WriteString(normalizeRow(lines[i]))
+		}
+	}
+
+	return sb.String()
+}
+
+// isSeparatorLine checks if a line is a markdown table separator (|---|---|)
+func isSeparatorLine(line string) bool {
+	if !strings.HasPrefix(line, "|") || !strings.HasSuffix(line, "|") {
+		return false
+	}
+	// Remove pipes and check if only dashes, colons, and spaces remain
+	inner := strings.Trim(line, "|")
+	for _, r := range inner {
+		if r != '-' && r != ':' && r != ' ' && r != '|' {
+			return false
+		}
+	}
+	// Must have at least some dashes
+	return strings.Contains(inner, "-")
+}
+
+// countColumns counts the number of columns in a table row
+func countColumns(row string) int {
+	row = strings.TrimSpace(row)
+	if !strings.HasPrefix(row, "|") {
+		// Not a pipe-delimited row, count by spaces or assume single column
+		return 1
+	}
+
+	// Count pipes (columns = pipes - 1, but we have outer pipes)
+	// | A | B | C | has 4 pipes, 3 columns
+	pipes := strings.Count(row, "|")
+	if pipes < 2 {
+		return 1
+	}
+	return pipes - 1
+}
+
+// buildSeparator creates a markdown table separator line
+func buildSeparator(numCols int) string {
+	var sb strings.Builder
+	sb.WriteString("|")
+	for i := 0; i < numCols; i++ {
+		sb.WriteString(" --- |")
+	}
+	return sb.String()
+}
+
+// normalizeRow ensures a row has proper pipe formatting
+func normalizeRow(row string) string {
+	row = strings.TrimSpace(row)
+	if row == "" {
+		return row
+	}
+
+	// Ensure leading pipe
+	if !strings.HasPrefix(row, "|") {
+		row = "| " + row
+	}
+
+	// Ensure trailing pipe
+	if !strings.HasSuffix(row, "|") {
+		row = row + " |"
+	}
+
+	return row
+}
+
+// normalizeTable normalizes all rows in a table
+func normalizeTable(lines []string) string {
+	var sb strings.Builder
+	first := true
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !first {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(normalizeRow(trimmed))
+		first = false
+	}
+	return sb.String()
 }
 
 // FormatElement formats a single element using the appropriate template

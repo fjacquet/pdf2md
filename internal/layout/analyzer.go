@@ -56,13 +56,23 @@ type Analyzer struct {
 	HeaderSizeRatio    float64
 	Rules              []Rule
 	Exclusion          ExclusionZone
+	Config             *LayoutConfig
 }
 
 // NewAnalyzer creates a new Analyzer with default configuration
 func NewAnalyzer() *Analyzer {
+	return NewAnalyzerWithConfig(DefaultConfig())
+}
+
+// NewAnalyzerWithConfig creates a new Analyzer with the specified configuration
+func NewAnalyzerWithConfig(config *LayoutConfig) *Analyzer {
+	if config == nil {
+		config = DefaultConfig()
+	}
 	a := &Analyzer{
-		ColumnGapThreshold: 10.0, // Default gap to consider as new column
-		HeaderSizeRatio:    1.2,  // Header is 1.2x larger than body
+		ColumnGapThreshold: config.ColumnGapThreshold,
+		HeaderSizeRatio:    config.HeaderSizeRatio,
+		Config:             config,
 	}
 
 	// Initialize Rules
@@ -96,18 +106,89 @@ func NewAnalyzer() *Analyzer {
 		{
 			Name: "Table Row (Wide Gaps)",
 			Condition: func(text string, fontSize, bodyFontSize float64) bool {
-				// Heuristic: Line contains wide gaps (4 spaces)
-				// Require at least 1 wide gap (2 columns)
-				if strings.Count(text, "    ") >= 1 {
-					return true
+				// First check if this looks like an equation (higher priority)
+				if a.isLikelyEquationText(text) {
+					return false // Don't classify as table
 				}
-				// Also allow 3 spaces if there are multiple gaps (likely a table with math)
-				// But exclude single gap (likely equation + number)
-				// We check for "   " (3 spaces) which is used for math lines
-				if strings.Count(text, "   ") >= 2 {
-					return true
+
+				// Check if this looks like an author block (common false positive)
+				if a.isLikelyAuthorBlock(text) {
+					return false
 				}
-				return false
+
+				// Count 4-space gaps (columns)
+				gapCount := strings.Count(text, "    ")
+				if gapCount == 0 {
+					// Also check for 3 spaces if there are multiple gaps
+					if strings.Count(text, "   ") < 2 {
+						return false
+					}
+					gapCount = strings.Count(text, "   ")
+				}
+
+				// Split by gaps to get "columns"
+				segments := strings.Split(text, "    ")
+				if len(segments) < 2 {
+					segments = strings.Split(text, "   ")
+				}
+
+				// Validate table-like structure:
+				// 1. Need at least 2 segments (columns)
+				if len(segments) < 2 {
+					return false
+				}
+
+				// 2. Segments should be relatively balanced in length
+				//    (author blocks often have one long segment and one short)
+				minLen := len(segments[0])
+				maxLen := len(segments[0])
+				for _, seg := range segments[1:] {
+					segLen := len(strings.TrimSpace(seg))
+					if segLen < minLen {
+						minLen = segLen
+					}
+					if segLen > maxLen {
+						maxLen = segLen
+					}
+				}
+
+				// If the ratio is too extreme, probably not a table
+				if minLen > 0 && maxLen > minLen*10 {
+					return false
+				}
+
+				// 3. Check for table-like content patterns
+				hasNumericContent := false
+				hasStructuredData := false
+				for _, seg := range segments {
+					seg = strings.TrimSpace(seg)
+					// Check for numbers
+					if containsSignificantNumbers(seg) {
+						hasNumericContent = true
+					}
+					// Check for structured data (short text, data-like)
+					if len(seg) > 0 && len(seg) < 30 {
+						hasStructuredData = true
+					}
+				}
+
+				// Tables typically have numeric or structured data
+				// Long prose text with gaps is likely an author block or equation
+				if !hasNumericContent && !hasStructuredData {
+					// Check if segments are all short (could still be table headers)
+					allShort := true
+					for _, seg := range segments {
+						if len(strings.TrimSpace(seg)) > 40 {
+							allShort = false
+							break
+						}
+					}
+					if !allShort {
+						return false
+					}
+				}
+
+				return true
 			},
 			Type: ElementTypeTable,
 		},
@@ -205,8 +286,12 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	// Step 4.6: Add vector graphics to elements (filter small decorative ones)
 	for _, vg := range graphics {
 		// Filter out small decorative graphics (bullets, icons, etc.)
-		// Minimum size threshold: 50x50 points
-		if vg.Width < 50 || vg.Height < 50 {
+		// Use configurable minimum size threshold (default: 50x50 points)
+		minSize := 50.0
+		if a.Config != nil {
+			minSize = a.Config.MinImageSize
+		}
+		if vg.Width < minSize || vg.Height < minSize {
 			continue
 		}
 		elements = append(elements, Element{
@@ -247,8 +332,9 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	// Step 8: Merge consecutive table rows
 	elements = a.MergeTableRows(elements)
 
-	// Step 9: Clean math symbols
+	// Step 9: Clean math symbols and merge fragmented math
 	elements = a.CleanMathSymbols(elements)
+	elements = a.CleanFragmentedMath(elements)
 
 	// Step 10: Filter page numbers (standalone numbers at page boundaries)
 	elements = a.FilterPageNumbers(elements)
@@ -672,6 +758,169 @@ func (a *Analyzer) isCodeBlock(text string) bool {
 	return false
 }
 
+// isLikelyEquationText checks if text content looks like a mathematical equation
+// This is used to prevent equations from being misclassified as tables
+func (a *Analyzer) isLikelyEquationText(text string) bool {
+	// Score-based approach
+	score := 0
+
+	// Math symbols (each occurrence adds points)
+	mathSymbols := []string{"=", "+", "−", "×", "÷", "∫", "∑", "∏", "√", "∂", "∇", "±", "≈", "≠", "≤", "≥", "∞", "→", "←", "↔", "⇒", "⇐", "⇔"}
+	for _, sym := range mathSymbols {
+		count := strings.Count(text, sym)
+		if count > 0 {
+			score += count
+		}
+	}
+
+	// Check for $...$ math delimiters
+	dollarCount := strings.Count(text, "$")
+	if dollarCount >= 2 {
+		score += dollarCount
+	}
+
+	// Check for equation numbering pattern at end: (1), (2.3), [1], etc.
+	// Common pattern: "equation content    (1)"
+	if hasEquationNumberAtEnd(text) {
+		score += 3
+	}
+
+	// Check for superscript/subscript patterns (common in math)
+	if strings.Contains(text, "^") || strings.Contains(text, "_") {
+		// But only count if not a URL or code-like content
+		if !strings.Contains(text, "http") && !strings.Contains(text, "www") {
+			score++
+		}
+	}
+
+	// Check for Greek letters (common in equations)
+	greekLetters := []string{"α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "π", "ρ", "σ", "τ", "υ", "φ", "χ", "ψ", "ω", "Γ", "Δ", "Θ", "Λ", "Ξ", "Π", "Σ", "Φ", "Ψ", "Ω"}
+	for _, letter := range greekLetters {
+		if strings.Contains(text, letter) {
+			score++
+		}
+	}
+
+	// Check for fraction patterns like a/b or common math expressions
+	// This is tricky since "/" is common in text too
+	// Only count if surrounded by short tokens (single letters or numbers)
+	if hasMathFractionPattern(text) {
+		score++
+	}
+
+	// Negative signals (reduce score if it looks more like a table)
+	// Multiple columns with headers like "Name", "Value", "Description"
+	tableHeaders := []string{"name", "value", "description", "type", "size", "date", "count", "total", "average", "status"}
+	textLower := strings.ToLower(text)
+	for _, header := range tableHeaders {
+		if strings.Contains(textLower, header) {
+			score-- // Reduce score
+		}
+	}
+
+	// Count how many "columns" we might have (segments between wide gaps)
+	segments := strings.Split(text, "    ")
+	if len(segments) > 3 {
+		// Many columns suggests table, not equation
+		score -= 2
+	}
+
+	// Equations usually have 1-3 "columns" (left side, equals, right side, maybe number)
+	// Tables usually have 3+ columns
+
+	// Use configurable threshold
+	threshold := 2
+	if a.Config != nil {
+		threshold = a.Config.EquationScoreThreshold
+	}
+	return score >= threshold
+}
+
+// hasEquationNumberAtEnd checks if text ends with equation numbering like (1), (2.3), [5]
+func hasEquationNumberAtEnd(text string) bool {
+	text = strings.TrimSpace(text)
+	if len(text) < 3 {
+		return false
+	}
+
+	// Check for pattern at end
+	// (n), (n.m), [n]
+	lastChar := text[len(text)-1]
+	if lastChar != ')' && lastChar != ']' {
+		return false
+	}
+
+	// Find opening bracket
+	openChar := '('
+	if lastChar == ']' {
+		openChar = '['
+	}
+
+	// Look for opening bracket (within last 10 chars)
+	searchStart := len(text) - 10
+	if searchStart < 0 {
+		searchStart = 0
+	}
+
+	for i := len(text) - 2; i >= searchStart; i-- {
+		if rune(text[i]) == openChar {
+			// Extract content between brackets
+			inner := text[i+1 : len(text)-1]
+			// Check if it's numeric with optional dots
+			if isNumericWithDots(inner) {
+				return true
+			}
+			break
+		}
+	}
+
+	return false
+}
+
+// hasMathFractionPattern checks for fraction-like patterns
+func hasMathFractionPattern(text string) bool {
+	// Look for patterns like "a/b" where a and b are short
+	for i := 1; i < len(text)-1; i++ {
+		if text[i] == '/' {
+			// Check if surrounded by short tokens (not words)
+			// Find token before /
+			prevEnd := i
+			prevStart := i - 1
+			for prevStart > 0 && text[prevStart-1] != ' ' && text[prevStart-1] != '$' {
+				prevStart--
+			}
+			prevToken := text[prevStart:prevEnd]
+
+			// Find token after /
+			nextStart := i + 1
+			nextEnd := i + 1
+			for nextEnd < len(text) && text[nextEnd] != ' ' && text[nextEnd] != '$' {
+				nextEnd++
+			}
+			nextToken := text[nextStart:nextEnd]
+
+			// Short tokens (1-3 chars) on both sides suggests fraction
+			if len(prevToken) <= 3 && len(nextToken) <= 3 && len(prevToken) > 0 && len(nextToken) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isNumericWithDots checks if string contains only digits and dots
+func isNumericWithDots(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r != '.' && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // isListItem checks if the block starts with a list marker
 func (a *Analyzer) isListItem(text string) bool {
 	if len(text) == 0 {
@@ -722,23 +971,38 @@ func (a *Analyzer) isListItem(text string) bool {
 func (a *Analyzer) calculateHeaderLevel(fontSize, bodyFontSize float64) int {
 	ratio := fontSize / bodyFontSize
 
-	// Map font size ratios to header levels
-	// H1: 2x or more
-	// H2: 1.75x
-	// H3: 1.5x
-	// H4: 1.3x
-	// H5: 1.15x
+	// Map font size ratios to header levels using configurable thresholds
+	// H1: 2x or more (default)
+	// H2: 1.75x (default)
+	// H3: 1.5x (default)
+	// H4: 1.3x (default)
+	// H5: 1.15x (default)
 	// H6: 1.0x (same as body, but might be bold)
 
-	if ratio >= 2.0 {
+	// Use config values if available, otherwise use defaults
+	h1Ratio := 2.0
+	h2Ratio := 1.75
+	h3Ratio := 1.5
+	h4Ratio := 1.3
+	h5Ratio := 1.15
+
+	if a.Config != nil {
+		h1Ratio = a.Config.H1Ratio
+		h2Ratio = a.Config.H2Ratio
+		h3Ratio = a.Config.H3Ratio
+		h4Ratio = a.Config.H4Ratio
+		h5Ratio = a.Config.H5Ratio
+	}
+
+	if ratio >= h1Ratio {
 		return 1
-	} else if ratio >= 1.75 {
+	} else if ratio >= h2Ratio {
 		return 2
-	} else if ratio >= 1.5 {
+	} else if ratio >= h3Ratio {
 		return 3
-	} else if ratio >= 1.3 {
+	} else if ratio >= h4Ratio {
 		return 4
-	} else if ratio >= 1.15 {
+	} else if ratio >= h5Ratio {
 		return 5
 	}
 	return 6
@@ -1366,4 +1630,108 @@ func (a *Analyzer) isStartOfEqNum(current Element, remaining []Element) bool {
 	}
 
 	return false
+}
+
+// CleanFragmentedMath applies the CleanMathContent function to clean up
+// fragmented math expressions in paragraph elements
+func (a *Analyzer) CleanFragmentedMath(elements []Element) []Element {
+	for i := range elements {
+		if elements[i].Type == ElementTypeParagraph || elements[i].Type == ElementTypeHeader {
+			elements[i].Content = CleanMathContent(elements[i].Content)
+		}
+	}
+	return elements
+}
+
+// isLikelyAuthorBlock detects author information blocks in academic papers
+// These are commonly misdetected as tables due to spacing between names/affiliations
+func (a *Analyzer) isLikelyAuthorBlock(text string) bool {
+	textLower := strings.ToLower(text)
+
+	// Check for email patterns
+	if strings.Contains(text, "@") && (strings.Contains(textLower, ".edu") ||
+		strings.Contains(textLower, ".com") ||
+		strings.Contains(textLower, ".org") ||
+		strings.Contains(textLower, ".ac.") ||
+		strings.Contains(textLower, ".net")) {
+		return true
+	}
+
+	// Check for common affiliation keywords
+	affiliationKeywords := []string{
+		"university", "institute", "department", "laboratory", "lab",
+		"school of", "college of", "faculty of", "centre", "center",
+		"research", "sciences", "engineering", "computer science",
+	}
+	for _, kw := range affiliationKeywords {
+		if strings.Contains(textLower, kw) {
+			return true
+		}
+	}
+
+	// Check for superscript affiliation markers (1, 2, 3, *, †, ‡)
+	// Common pattern: "Author Name1    Another Author2"
+	affiliationMarkers := []string{"¹", "²", "³", "⁴", "⁵", "†", "‡", "§", "∗", "⋆"}
+	for _, marker := range affiliationMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+
+	// Check for author name patterns with titles
+	titlePatterns := []string{"dr.", "prof.", "ph.d", "m.d.", "mr.", "ms.", "mrs."}
+	for _, title := range titlePatterns {
+		if strings.Contains(textLower, title) {
+			return true
+		}
+	}
+
+	// Check for "and" between short segments (common in author lists)
+	// "John Smith and Jane Doe    Bob Wilson"
+	segments := strings.Split(text, "    ")
+	if len(segments) >= 2 {
+		// Check if any segment contains " and " suggesting author list
+		for _, seg := range segments {
+			if strings.Contains(strings.ToLower(seg), " and ") {
+				// Verify it looks like names (mostly capitalized words)
+				words := strings.Fields(seg)
+				capitalizedCount := 0
+				for _, word := range words {
+					if len(word) > 0 && unicode.IsUpper(rune(word[0])) {
+						capitalizedCount++
+					}
+				}
+				if capitalizedCount > len(words)/2 {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// containsSignificantNumbers checks if text contains numbers that suggest tabular data
+// (excludes single digits that might be superscripts or equation numbers)
+func containsSignificantNumbers(text string) bool {
+	digitCount := 0
+	consecutiveDigits := 0
+	maxConsecutive := 0
+
+	for _, r := range text {
+		if unicode.IsDigit(r) {
+			digitCount++
+			consecutiveDigits++
+			if consecutiveDigits > maxConsecutive {
+				maxConsecutive = consecutiveDigits
+			}
+		} else {
+			consecutiveDigits = 0
+		}
+	}
+
+	// Require at least 2 digits total and at least 2 consecutive digits
+	// to be considered "significant" numeric content
+	// Single digits like "1" or "2" are often affiliations or equation numbers
+	return digitCount >= 2 && maxConsecutive >= 2
 }

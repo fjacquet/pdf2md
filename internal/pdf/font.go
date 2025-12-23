@@ -160,6 +160,7 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 		// Default encoding based on Subtype?
 		// For Type1, default is StandardEncoding if not specified (usually)
 		// For TrueType, it's complicated.
+		// Type3 fonts MUST have an Encoding entry per spec, but handle gracefully if missing.
 		// Let's assume StandardEncoding for simple fonts if nothing else.
 		if font.Subtype == "Type1" || font.Subtype == "TrueType" {
 			for i, name := range StandardEncoding {
@@ -168,6 +169,11 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 				}
 			}
 		}
+	}
+
+	// Handle Type3 specific parsing
+	if font.Subtype == "Type3" {
+		fm.parseType3Font(font, dict)
 	}
 
 	// Check ToUnicode CMap
@@ -256,6 +262,83 @@ func (fm *FontManager) parseEncoding(font *Font, encodingObj Object) {
 				} else if name, ok := item.(Name); ok {
 					font.Encoding[currentCode] = string(name)
 					currentCode++
+				}
+			}
+		}
+	}
+}
+
+// parseType3Font handles Type3 font specific parsing.
+// Type3 fonts are user-defined fonts where each glyph is defined by a content stream.
+// They use an Encoding dictionary to map character codes to glyph names,
+// and a CharProcs dictionary to map glyph names to content streams.
+func (fm *FontManager) parseType3Font(font *Font, dict Dictionary) {
+	// Type3 fonts MUST have:
+	// - FontBBox: bounding box
+	// - FontMatrix: transformation matrix (usually [0.001 0 0 0.001 0 0])
+	// - CharProcs: dictionary mapping character names to content streams
+	// - Encoding: maps character codes to glyph names
+	// - FirstChar, LastChar, Widths: like simple fonts
+
+	// Parse FontMatrix (used for proper sizing)
+	if matrixArr, ok := dict[Name("FontMatrix")].(Array); ok && len(matrixArr) == 6 {
+		// FontMatrix is typically [0.001 0 0 0.001 0 0] for 1000 unit em square
+		// We don't need to store this for basic text extraction
+		_ = matrixArr
+	}
+
+	// Parse CharProcs to know which glyphs are defined
+	// We don't need to execute the content streams for text extraction,
+	// we just need to know the glyph names exist
+	if charProcsObj, ok := dict[Name("CharProcs")]; ok {
+		var charProcsDict Dictionary
+		if ref, ok := charProcsObj.(IndirectRef); ok {
+			obj, _ := fm.reader.ReadObject(ref.ObjectNumber)
+			if d, ok := obj.(Dictionary); ok {
+				charProcsDict = d
+			}
+		} else if d, ok := charProcsObj.(Dictionary); ok {
+			charProcsDict = d
+		}
+
+		// CharProcs dictionary has Name -> Stream mappings
+		// For text extraction, having the Encoding is usually sufficient
+		// But we can verify glyphs exist
+		if charProcsDict != nil {
+			// Log or validate CharProcs entries if needed
+			// For now, we rely on Encoding for character mapping
+			_ = charProcsDict
+		}
+	}
+
+	// For Type3 fonts without ToUnicode, we try to build a mapping from:
+	// Character code -> Encoding -> Glyph name -> GlyphToUnicode
+	// This is already handled in DecodeString via font.Encoding
+
+	// If Encoding doesn't provide useful names, try to extract from CharProcs keys
+	// This is a fallback for non-standard Type3 fonts
+	if len(font.Encoding) == 0 {
+		// Try to build encoding from CharProcs if present
+		if charProcsObj, ok := dict[Name("CharProcs")]; ok {
+			var charProcsDict Dictionary
+			if ref, ok := charProcsObj.(IndirectRef); ok {
+				obj, _ := fm.reader.ReadObject(ref.ObjectNumber)
+				if d, ok := obj.(Dictionary); ok {
+					charProcsDict = d
+				}
+			} else if d, ok := charProcsObj.(Dictionary); ok {
+				charProcsDict = d
+			}
+
+			if charProcsDict != nil && font.FirstChar >= 0 && font.LastChar >= font.FirstChar {
+				// Map character codes to glyph names in order
+				// This is a heuristic and may not be correct for all Type3 fonts
+				code := font.FirstChar
+				for name := range charProcsDict {
+					if code <= font.LastChar {
+						font.Encoding[code] = string(name)
+						code++
+					}
 				}
 			}
 		}

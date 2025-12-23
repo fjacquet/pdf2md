@@ -2,9 +2,6 @@ package pdf
 
 import (
 	"bytes"
-	"compress/zlib"
-	"fmt"
-	"io"
 )
 
 // ExtractContent extracts the raw content stream from a page
@@ -70,37 +67,5 @@ func (r *Reader) ExtractContent(page Dictionary) ([]byte, error) {
 }
 
 func decodeStream(s Stream) ([]byte, error) {
-	// Check filter
-	filter := s.Dictionary[Name("Filter")]
-	if filter == nil {
-		return s.Data, nil
-	}
-
-	// Handle /FlateDecode
-	if name, ok := filter.(Name); ok && name == "FlateDecode" {
-		return flateDecode(s.Data)
-	}
-
-	// Handle Array of filters (e.g. [/FlateDecode])
-	if arr, ok := filter.(Array); ok {
-		if len(arr) == 1 {
-			if name, ok := arr[0].(Name); ok && name == "FlateDecode" {
-				return flateDecode(s.Data)
-			}
-		}
-	}
-
-	// TODO: Handle other filters (LZW, ASCII85, etc.)
-	// For now, return raw data if unknown filter (or error?)
-	// Let's return error to be safe.
-	return nil, fmt.Errorf("unsupported filter: %v", filter)
-}
-
-func flateDecode(data []byte) ([]byte, error) {
-	r, err := zlib.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-	return io.ReadAll(r)
+	return DecodeStreamFromDict(s.Data, s.Dictionary)
 }

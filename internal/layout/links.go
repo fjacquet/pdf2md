@@ -2,6 +2,7 @@ package layout
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/fjacquet/pdf2md/internal/extractor"
 	"github.com/fjacquet/pdf2md/internal/types"
@@ -24,34 +25,11 @@ func ProcessLinks(elements []Element, links []types.Link) []Element {
 
 		// Check all links
 		for _, link := range links {
-			// Check intersection
-			// Link rect is [x1, y1, x2, y2] (bottom-left, top-right usually)
-			// Element has X, Y, Width, Height (Y is usually bottom or top depending on coord system)
-			// PDF coords: Y=0 at bottom.
-			// Our extractor seems to normalize?
-			// Let's assume standard PDF coords for Link Rect.
-			// Our TextBlock Y is usually bottom-left of the text?
-			// We need to be careful about coordinate systems.
-			// The extractor (pdf/interpreter.go) converts coords.
+			// Element bounding box
+			ex1, ey1 := el.X, el.Y
+			ex2, ey2 := el.X+el.Width, el.Y+el.Height
 
-			// Let's assume simple bounding box intersection for now.
-			// Element: X, Y, Width, Height.
-			// Link: Rect[0], Rect[1], Rect[2], Rect[3] (x1, y1, x2, y2)
-
-			// Check if Element center is inside Link Rect
-			cx := el.X + el.Width/2
-			cy := el.Y + el.Height/2 // This depends on Y origin
-
-			// If Y is top-down (like HTML/Canvas), then Y increases downwards.
-			// If Y is bottom-up (PDF), then Y increases upwards.
-			// Our extractor seems to keep PDF coords (Y=0 at bottom) or flips them?
-			// Let's check interpreter.go or just try.
-			// Usually PDF extractors normalize to top-left origin.
-			// If so, Y increases downwards.
-
-			// Let's assume the Link Rect matches the Element coordinate system
-			// because both come from the same PDF reader/extractor.
-
+			// Link rect (x1, y1, x2, y2)
 			lx1, ly1, lx2, ly2 := link.Rect[0], link.Rect[1], link.Rect[2], link.Rect[3]
 
 			// Normalize Link Rect (ensure x1<x2, y1<y2)
@@ -62,35 +40,38 @@ func ProcessLinks(elements []Element, links []types.Link) []Element {
 				ly1, ly2 = ly2, ly1
 			}
 
-			// Check if element is roughly within link rect
-			// Using center point check
-			// But wait, a link might cover only PART of a text block if the block is a full line.
-			// But we are processing Elements which are merged blocks.
-			// Ideally we should do this BEFORE merging elements.
-			// But `Analyze` calls `blocksToElements` then `MergeElements`.
-			// If we do it after merging, we lose granularity.
-			// A link might be on "click here" but the element is "Please click here for more".
-			// If we just wrap the whole element, it becomes "[Please click here for more](url)".
-			// This is acceptable for a first version, but not ideal.
+			// Calculate intersection rectangle
+			ix1 := math.Max(ex1, lx1)
+			iy1 := math.Max(ey1, ly1)
+			ix2 := math.Min(ex2, lx2)
+			iy2 := math.Min(ey2, ly2)
 
-			// Better approach:
-			// If we want precise links, we need to apply this at `blocksToElements` stage
-			// where blocks are smaller (often individual words or small phrases).
-			// But `ProcessLinks` takes `[]Element`.
-			// Maybe we should move this logic to `blocksToElements`?
+			// Check if there's a valid intersection
+			if ix1 >= ix2 || iy1 >= iy2 {
+				continue // No intersection
+			}
 
-			// For now, let's implement checking if the element is *mostly* covered by the link.
-			// Or if the link is *inside* the element?
+			// Calculate areas
+			intersectionArea := (ix2 - ix1) * (iy2 - iy1)
+			elementArea := el.Width * el.Height
+			linkArea := (lx2 - lx1) * (ly2 - ly1)
 
-			// Intersection logic:
-			// If intersection area / link area > 0.5 -> The link targets this element.
-			// If intersection area / element area > 0.5 -> The element is the link.
+			// Match if intersection covers significant portion of either rect
+			// - Link is mostly inside element (link is anchor text)
+			// - Element is mostly inside link (element is clickable)
+			linkCoverage := 0.0
+			elementCoverage := 0.0
+			if linkArea > 0 {
+				linkCoverage = intersectionArea / linkArea
+			}
+			if elementArea > 0 {
+				elementCoverage = intersectionArea / elementArea
+			}
 
-			// Let's try a simple containment check of the center.
-			if cx >= lx1 && cx <= lx2 && cy >= ly1 && cy <= ly2 {
-				// Match!
-				// Format as markdown link
-				// Avoid double linking if already linked?
+			// Match if >30% of either rectangle is covered
+			// (lower threshold than 50% to catch partial links)
+			if linkCoverage > 0.3 || elementCoverage > 0.3 {
+				// Match! Format as markdown link
 				el.Content = fmt.Sprintf("[%s](%s)", el.Content, link.URI)
 				break // Only one link per element for now
 			}
@@ -113,13 +94,14 @@ func ApplyLinksToBlocks(blocks []extractor.TextBlock, links []types.Link) []extr
 	for i := range newBlocks {
 		block := &newBlocks[i]
 
-		cx := block.X + block.Width/2
-		cy := block.Y + block.Height/2
+		// Block bounding box
+		bx1, by1 := block.X, block.Y
+		bx2, by2 := block.X+block.Width, block.Y+block.Height
 
 		for _, link := range links {
 			lx1, ly1, lx2, ly2 := link.Rect[0], link.Rect[1], link.Rect[2], link.Rect[3]
 
-			// Normalize
+			// Normalize link rect
 			if lx1 > lx2 {
 				lx1, lx2 = lx2, lx1
 			}
@@ -127,8 +109,34 @@ func ApplyLinksToBlocks(blocks []extractor.TextBlock, links []types.Link) []extr
 				ly1, ly2 = ly2, ly1
 			}
 
-			if cx >= lx1 && cx <= lx2 && cy >= ly1 && cy <= ly2 {
-				// Set LinkURI instead of modifying Text
+			// Calculate intersection rectangle
+			ix1 := math.Max(bx1, lx1)
+			iy1 := math.Max(by1, ly1)
+			ix2 := math.Min(bx2, lx2)
+			iy2 := math.Min(by2, ly2)
+
+			// Check if there's a valid intersection
+			if ix1 >= ix2 || iy1 >= iy2 {
+				continue // No intersection
+			}
+
+			// Calculate areas
+			intersectionArea := (ix2 - ix1) * (iy2 - iy1)
+			blockArea := block.Width * block.Height
+			linkArea := (lx2 - lx1) * (ly2 - ly1)
+
+			// Calculate coverage ratios
+			linkCoverage := 0.0
+			blockCoverage := 0.0
+			if linkArea > 0 {
+				linkCoverage = intersectionArea / linkArea
+			}
+			if blockArea > 0 {
+				blockCoverage = intersectionArea / blockArea
+			}
+
+			// Match if >30% of either rectangle is covered
+			if linkCoverage > 0.3 || blockCoverage > 0.3 {
 				block.LinkURI = link.URI
 				break
 			}

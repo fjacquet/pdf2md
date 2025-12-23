@@ -32,7 +32,7 @@ func TestTokenizer_NextToken(t *testing.T) {
 		{
 			input: "/Name#20With#20Spaces",
 			expected: []Token{
-				{Type: TokenName, Value: "Name#20With#20Spaces"}, // TODO: Implement hex decoding in readName
+				{Type: TokenName, Value: "Name With Spaces"}, // Hex escapes decoded: #20 = space
 			},
 		},
 	}

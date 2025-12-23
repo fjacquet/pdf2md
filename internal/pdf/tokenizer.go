@@ -16,6 +16,8 @@ const (
 	TokenEOF
 	TokenKeyword    // obj, endobj, stream, endstream, xref, trailer, startxref, true, false, null, R
 	TokenNumeric    // 123, -12.34
+	TokenInteger    // 123 (integer only - for inline image parsing)
+	TokenReal       // -12.34 (real only - for inline image parsing)
 	TokenName       // /Name
 	TokenString     // (String)
 	TokenHexString  // <Hex>
@@ -149,10 +151,54 @@ func (t *Tokenizer) readName() (Token, error) {
 			t.unreadByte()
 			break
 		}
+
+		// Handle #xx hex escapes (PDF 1.2+)
+		if ch == '#' {
+			// Read two hex digits
+			hex1, err := t.readByte()
+			if err != nil {
+				return Token{}, fmt.Errorf("incomplete hex escape in name: %w", err)
+			}
+			hex2, err := t.readByte()
+			if err != nil {
+				return Token{}, fmt.Errorf("incomplete hex escape in name: %w", err)
+			}
+
+			val, err := parseHexByte(hex1, hex2)
+			if err != nil {
+				return Token{}, fmt.Errorf("invalid hex escape in name: %w", err)
+			}
+			buf.WriteByte(val)
+			continue
+		}
+
 		buf.WriteByte(ch)
 	}
-	// TODO: Handle #xx escapes
 	return Token{Type: TokenName, Value: buf.String()}, nil
+}
+
+// parseHexByte converts two hex digit characters to a byte
+func parseHexByte(h1, h2 byte) (byte, error) {
+	v1, ok1 := hexDigitValue(h1)
+	v2, ok2 := hexDigitValue(h2)
+	if !ok1 || !ok2 {
+		return 0, fmt.Errorf("invalid hex digits: %c%c", h1, h2)
+	}
+	return v1<<4 | v2, nil
+}
+
+// hexDigitValue returns the numeric value of a hex digit
+func hexDigitValue(ch byte) (byte, bool) {
+	switch {
+	case ch >= '0' && ch <= '9':
+		return ch - '0', true
+	case ch >= 'A' && ch <= 'F':
+		return ch - 'A' + 10, true
+	case ch >= 'a' && ch <= 'f':
+		return ch - 'a' + 10, true
+	default:
+		return 0, false
+	}
 }
 
 func (t *Tokenizer) readString() (Token, error) {
@@ -407,4 +453,54 @@ func isDelimiter(ch byte) bool {
 	return ch == '(' || ch == ')' || ch == '<' || ch == '>' ||
 		ch == '[' || ch == ']' || ch == '{' || ch == '}' ||
 		ch == '/' || ch == '%'
+}
+
+// ReadUntilEI reads raw bytes until the EI (end inline image) marker is found.
+// EI must be preceded by whitespace and followed by whitespace/delimiter/EOF.
+// Returns the image data without the trailing whitespace before EI.
+func (t *Tokenizer) ReadUntilEI() ([]byte, error) {
+	var buf bytes.Buffer
+
+	// Skip the single whitespace character after ID
+	ch, err := t.readByte()
+	if err != nil {
+		return nil, err
+	}
+	// Don't include this initial whitespace in the data
+	if !isWhitespace(ch) {
+		// If no whitespace, put it back
+		t.unreadByte()
+	}
+
+	// Read bytes until we find: whitespace + "EI" + (whitespace/delimiter/EOF)
+	// We need to track a sliding window to detect the pattern
+
+	for {
+		ch, err := t.readByte()
+		if err == io.EOF {
+			// Unexpected EOF - return what we have
+			return buf.Bytes(), fmt.Errorf("unexpected EOF looking for EI marker")
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		buf.WriteByte(ch)
+
+		// Check if we just wrote whitespace followed by potential EI
+		if buf.Len() >= 3 {
+			data := buf.Bytes()
+			// Check for pattern: whitespace + E + I
+			pos := len(data) - 1
+			if data[pos] == 'I' && pos >= 1 && data[pos-1] == 'E' && pos >= 2 && isWhitespace(data[pos-2]) {
+				// Check if next char is whitespace/delimiter/EOF
+				next, err := t.peekByte()
+				if err == io.EOF || (err == nil && (isWhitespace(next) || isDelimiter(next))) {
+					// Found valid EI marker!
+					// Return data without the trailing " EI"
+					return data[:pos-2], nil
+				}
+			}
+		}
+	}
 }

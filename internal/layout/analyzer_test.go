@@ -175,3 +175,114 @@ func TestMergeCodeBlocks(t *testing.T) {
 		t.Errorf("Third block mismatch: %v", merged[2])
 	}
 }
+
+func TestIsLikelyEquationText(t *testing.T) {
+	analyzer := NewAnalyzer()
+
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{
+			name: "equation with equals and number",
+			text: "$z^2 = 0$    (2)",
+			want: true,
+		},
+		{
+			name: "equation with math symbols",
+			text: "∫ f(x)dx = F(x) + C",
+			want: true,
+		},
+		{
+			name: "equation with Greek letters",
+			text: "α + β = γ",
+			want: true,
+		},
+		{
+			name: "simple table row",
+			text: "Name    Value    Description",
+			want: false,
+		},
+		{
+			name: "table with numbers",
+			text: "Total    100    200    300",
+			want: false,
+		},
+		{
+			name: "equation with fraction",
+			text: "a/b + c/d = e",
+			want: true,
+		},
+		{
+			name: "inline math",
+			text: "$x^2$ equals $y^2$",
+			want: true,
+		},
+		{
+			name: "just text",
+			text: "This is a paragraph of text",
+			want: false,
+		},
+		{
+			name: "equation number only",
+			text: "x = y    (1.2)",
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := analyzer.isLikelyEquationText(tt.text)
+			if got != tt.want {
+				t.Errorf("isLikelyEquationText(%q) = %v, want %v", tt.text, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasEquationNumberAtEnd(t *testing.T) {
+	tests := []struct {
+		text string
+		want bool
+	}{
+		{"x = y    (1)", true},
+		{"equation    (2.3)", true},
+		{"something    [5]", true},
+		{"no number at end", false},
+		{"text (abc)", false},
+		{"", false},
+		{"(1)", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			got := hasEquationNumberAtEnd(tt.text)
+			if got != tt.want {
+				t.Errorf("hasEquationNumberAtEnd(%q) = %v, want %v", tt.text, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasMathFractionPattern(t *testing.T) {
+	tests := []struct {
+		text string
+		want bool
+	}{
+		{"a/b", true},
+		{"1/2", true},
+		{"x/y + z", true},
+		{"this/is/a/path", false}, // too long tokens
+		{"no fraction here", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			got := hasMathFractionPattern(tt.text)
+			if got != tt.want {
+				t.Errorf("hasMathFractionPattern(%q) = %v, want %v", tt.text, got, tt.want)
+			}
+		})
+	}
+}

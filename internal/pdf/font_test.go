@@ -128,3 +128,63 @@ func TestFontManager_Methods(t *testing.T) {
 		t.Errorf("Expected 'A' (raw) for unknown font, got '%s'", s)
 	}
 }
+
+func TestType3Font_DecodeString(t *testing.T) {
+	// Type3 font with Encoding mapping character codes to glyph names
+	f := &Font{
+		Subtype: "Type3",
+		Encoding: map[int]string{
+			65: "A",       // Standard glyph name
+			66: "B",       // Standard glyph name
+			67: "percent", // Glyph name that maps to %
+		},
+		FirstChar: 65,
+		LastChar:  67,
+		Widths:    []float64{500, 500, 500},
+	}
+
+	// Test standard character decoding
+	s1 := string([]byte{65, 66}) // AB
+	if res := f.DecodeString(s1); res != "AB" {
+		t.Errorf("Type3: Expected 'AB', got '%s'", res)
+	}
+
+	// Test glyph name that requires GlyphToUnicode lookup
+	s2 := string([]byte{67}) // percent -> %
+	if res := f.DecodeString(s2); res != "%" {
+		t.Errorf("Type3: Expected '%%', got '%s'", res)
+	}
+
+	// Type3 with ToUnicode (less common but possible)
+	f2 := &Font{
+		Subtype: "Type3",
+		ToUnicode: map[int]string{
+			65: "X",
+			66: "Y",
+		},
+	}
+	s3 := string([]byte{65, 66})
+	if res := f2.DecodeString(s3); res != "XY" {
+		t.Errorf("Type3 with ToUnicode: Expected 'XY', got '%s'", res)
+	}
+}
+
+func TestType3Font_GetWidth(t *testing.T) {
+	// Type3 font uses simple Widths array like Type1
+	f := &Font{
+		Subtype:   "Type3",
+		FirstChar: 65,
+		LastChar:  67,
+		Widths:    []float64{500, 600, 700},
+	}
+
+	if w := f.GetWidth(65); w != 500 {
+		t.Errorf("Type3: Expected width 500 for char 65, got %f", w)
+	}
+	if w := f.GetWidth(66); w != 600 {
+		t.Errorf("Type3: Expected width 600 for char 66, got %f", w)
+	}
+	if w := f.GetWidth(68); w != 0 {
+		t.Errorf("Type3: Expected width 0 for out-of-range char 68, got %f", w)
+	}
+}
