@@ -39,7 +39,7 @@ func TestReader_ParseXRefTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	if _, err := tmpfile.Write(content); err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestReader_ParseXRefTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReader failed: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Verify objects
 	obj1, err := r.ReadObject(1)
@@ -68,7 +68,7 @@ func TestReader_ParseXRefTable(t *testing.T) {
 	}
 }
 
-func TestReader_ParseXRefStream(t *testing.T) {
+func TestReader_ParseXRefStream(_ *testing.T) {
 	// Minimal PDF with XRef Stream
 	// Note: Constructing a valid XRef stream manually is hard because of binary data and offsets.
 	// We will try to mock the reader or just test specific methods if possible.

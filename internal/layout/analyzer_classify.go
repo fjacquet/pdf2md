@@ -37,15 +37,15 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 		innerText := strings.TrimPrefix(strings.TrimSuffix(text, "**"), "**")
 		innerText = strings.TrimSpace(innerText)
 
-		// Skip if it looks like a code line number
-		if len(innerText) > 0 && innerText[0] >= '0' && innerText[0] <= '9' {
-			// Don't treat as header
-		} else if len(innerText) < 100 && len(innerText) > 0 &&
+		// Skip if it looks like a code line number (starts with digit)
+		looksLikeCodeLine := len(innerText) > 0 && innerText[0] >= '0' && innerText[0] <= '9'
+		looksLikeHeader := len(innerText) < 100 && len(innerText) > 2 &&
 			!strings.HasSuffix(innerText, ".") &&
 			!strings.HasSuffix(innerText, ",") &&
 			!strings.HasSuffix(innerText, ";") &&
-			!strings.Contains(innerText, "\n") &&
-			len(innerText) > 2 {
+			!strings.Contains(innerText, "\n")
+
+		if !looksLikeCodeLine && looksLikeHeader {
 			element.Type = ElementTypeHeader
 			element.Level = 4
 			element.Content = innerText
@@ -99,8 +99,10 @@ func (a *Analyzer) isNumberedHeader(text string) bool {
 	}
 
 	// Check for Roman numeral headers
-	romanNumerals := []string{"I.", "II.", "III.", "IV.", "V.", "VI.", "VII.", "VIII.", "IX.", "X.",
-		"XI.", "XII.", "XIII.", "XIV.", "XV."}
+	romanNumerals := []string{
+		"I.", "II.", "III.", "IV.", "V.", "VI.", "VII.", "VIII.", "IX.", "X.",
+		"XI.", "XII.", "XIII.", "XIV.", "XV.",
+	}
 	for _, rn := range romanNumerals {
 		if marker == rn {
 			return true
@@ -413,18 +415,20 @@ func (a *Analyzer) calculateHeaderLevel(fontSize, bodyFontSize float64) int {
 		h5Ratio = a.Config.H5Ratio
 	}
 
-	if ratio >= h1Ratio {
+	switch {
+	case ratio >= h1Ratio:
 		return 1
-	} else if ratio >= h2Ratio {
+	case ratio >= h2Ratio:
 		return 2
-	} else if ratio >= h3Ratio {
+	case ratio >= h3Ratio:
 		return 3
-	} else if ratio >= h4Ratio {
+	case ratio >= h4Ratio:
 		return 4
-	} else if ratio >= h5Ratio {
+	case ratio >= h5Ratio:
 		return 5
+	default:
+		return 6
 	}
-	return 6
 }
 
 // isBold checks if font name indicates bold text

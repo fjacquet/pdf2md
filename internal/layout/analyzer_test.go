@@ -12,7 +12,6 @@ func TestNewAnalyzer(t *testing.T) {
 	if analyzer == nil {
 		t.Fatal("NewAnalyzer() returned nil")
 	}
-
 }
 
 func TestAnalyzeEmptyBlocks(t *testing.T) {

@@ -1,3 +1,4 @@
+// Package markdown provides Markdown generation from document elements.
 package markdown
 
 import (

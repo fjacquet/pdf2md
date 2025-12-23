@@ -1,3 +1,4 @@
+// Package extractor provides PDF content extraction functionality.
 package extractor
 
 import (
@@ -107,10 +108,10 @@ func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) (*PageContent, error)
 		if arr, ok := mediaBoxObj.(pdf.Array); ok && len(arr) == 4 {
 			// [x1, y1, x2, y2]
 			// Width = abs(x2-x1), Height = abs(y2-y1)
-			x1, _ := toFloat(arr[0])
-			y1, _ := toFloat(arr[1])
-			x2, _ := toFloat(arr[2])
-			y2, _ := toFloat(arr[3])
+			x1 := toFloat(arr[0])
+			y1 := toFloat(arr[1])
+			x2 := toFloat(arr[2])
+			y2 := toFloat(arr[3])
 			width = abs(x2 - x1)
 			height = abs(y2 - y1)
 		}
@@ -126,14 +127,14 @@ func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) (*PageContent, error)
 	}, nil
 }
 
-func toFloat(obj pdf.Object) (float64, bool) {
+func toFloat(obj pdf.Object) float64 {
 	if i, ok := obj.(pdf.Integer); ok {
-		return float64(i), true
+		return float64(i)
 	}
 	if r, ok := obj.(pdf.Real); ok {
-		return float64(r), true
+		return float64(r)
 	}
-	return 0, false
+	return 0
 }
 
 func abs(x float64) float64 {

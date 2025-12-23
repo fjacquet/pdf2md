@@ -1,3 +1,4 @@
+// Package types defines shared data structures used across pdf2md packages.
 package types
 
 // Element represents a logical document element (header, paragraph, etc.)
@@ -16,6 +17,7 @@ type Element struct {
 // ElementType defines the type of a document element
 type ElementType string
 
+// Element type constants for document elements.
 const (
 	ElementTypeHeader     ElementType = "header"
 	ElementTypeParagraph  ElementType = "paragraph"

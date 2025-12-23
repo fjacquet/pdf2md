@@ -11,19 +11,19 @@ func IdentityMatrix() Matrix {
 	return Matrix{1, 0, 0, 1, 0, 0}
 }
 
-// Multiply multiplies two matrices: m1 x m2
-func (m1 Matrix) Multiply(m2 Matrix) Matrix {
+// Multiply multiplies two matrices: m x other
+func (m Matrix) Multiply(other Matrix) Matrix {
 	// [a1 b1 0]   [a2 b2 0]
 	// [c1 d1 0] x [c2 d2 0]
 	// [e1 f1 1]   [e2 f2 1]
 
 	return Matrix{
-		m1[0]*m2[0] + m1[1]*m2[2],         // a
-		m1[0]*m2[1] + m1[1]*m2[3],         // b
-		m1[2]*m2[0] + m1[3]*m2[2],         // c
-		m1[2]*m2[1] + m1[3]*m2[3],         // d
-		m1[4]*m2[0] + m1[5]*m2[2] + m2[4], // e (tx)
-		m1[4]*m2[1] + m1[5]*m2[3] + m2[5], // f (ty)
+		m[0]*other[0] + m[1]*other[2],            // a
+		m[0]*other[1] + m[1]*other[3],            // b
+		m[2]*other[0] + m[3]*other[2],            // c
+		m[2]*other[1] + m[3]*other[3],            // d
+		m[4]*other[0] + m[5]*other[2] + other[4], // e (tx)
+		m[4]*other[1] + m[5]*other[3] + other[5], // f (ty)
 	}
 }
 

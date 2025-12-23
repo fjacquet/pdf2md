@@ -85,7 +85,7 @@ func TestInterpreter_HandleTextState(t *testing.T) {
 
 func TestInterpreter_HandleTextPosition(t *testing.T) {
 	in := NewInterpreter(nil, nil)
-	in.handleTextObject("BT") // Reset matrices
+	_ = in.handleTextObject("BT") // Reset matrices
 
 	// Td
 	in.Stack = []Object{Integer(10), Integer(20)}
@@ -124,7 +124,7 @@ func TestInterpreter_HandleTextPosition(t *testing.T) {
 
 func TestInterpreter_HandleTextShow(t *testing.T) {
 	in := NewInterpreter(nil, nil)
-	in.handleTextObject("BT")
+	_ = in.handleTextObject("BT")
 	in.State.Tf = "F1"
 	in.State.Tfs = 12
 

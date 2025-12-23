@@ -18,11 +18,11 @@ func isMathFont(fontName string) bool {
 		"msam", // AMS Symbols A
 		"symbol",
 		"math",
-		"eufm",       // Euler Fraktur
-		"stix",       // STIX Fonts
-		"cambria",    // Cambria Math
+		"eufm",        // Euler Fraktur
+		"stix",        // STIX Fonts
+		"cambria",     // Cambria Math
 		"latinmodern", // Latin Modern
-		"lmmath",     // Latin Modern Math
+		"lmmath",      // Latin Modern Math
 	}
 
 	for _, mf := range mathFonts {

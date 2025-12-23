@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestCustomExtractor(t *testing.T) {
+func TestCustomExtractor(_ *testing.T) {
 	// Create a simple test to ensure the extractor compiles
 	// We need a dummy file or just check the type
 	var _ PDFExtractor = (*CustomExtractor)(nil)
@@ -26,7 +26,7 @@ func TestWithRealPDF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open PDF: %v", err)
 	}
-	defer ext.Close()
+	defer func() { _ = ext.Close() }()
 
 	pageCount, err := ext.GetPageCount()
 	if err != nil {

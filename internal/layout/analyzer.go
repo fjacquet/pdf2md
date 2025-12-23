@@ -1,3 +1,4 @@
+// Package layout provides PDF document layout analysis functionality.
 package layout
 
 import (
@@ -7,8 +8,10 @@ import (
 	"github.com/fjacquet/pdf2md/internal/types"
 )
 
-// Type aliases for backward compatibility
+// Element is an alias for types.Element for backward compatibility.
 type Element = types.Element
+
+// ElementType is an alias for types.ElementType for backward compatibility.
 type ElementType = types.ElementType
 
 // Re-export element type constants
@@ -41,7 +44,7 @@ type Analyzer struct {
 	HeaderSizeRatio    float64
 	Rules              []Rule
 	Exclusion          ExclusionZone
-	Config             *LayoutConfig
+	Config             *Config
 }
 
 // NewAnalyzer creates a new Analyzer with default configuration
@@ -50,7 +53,7 @@ func NewAnalyzer() *Analyzer {
 }
 
 // NewAnalyzerWithConfig creates a new Analyzer with the specified configuration
-func NewAnalyzerWithConfig(config *LayoutConfig) *Analyzer {
+func NewAnalyzerWithConfig(config *Config) *Analyzer {
 	if config == nil {
 		config = DefaultConfig()
 	}
@@ -64,7 +67,7 @@ func NewAnalyzerWithConfig(config *LayoutConfig) *Analyzer {
 	a.Rules = []Rule{
 		{
 			Name: "Admonition",
-			Condition: func(text string, fontSize, bodyFontSize float64) bool {
+			Condition: func(text string, _, _ float64) bool {
 				cleanText := text
 				if strings.HasPrefix(cleanText, "**") {
 					cleanText = strings.TrimPrefix(cleanText, "**")
@@ -83,14 +86,14 @@ func NewAnalyzerWithConfig(config *LayoutConfig) *Analyzer {
 		},
 		{
 			Name: "Code Block (Keywords)",
-			Condition: func(text string, fontSize, bodyFontSize float64) bool {
+			Condition: func(text string, _, _ float64) bool {
 				return a.isCodeBlock(text)
 			},
 			Type: ElementTypeCodeBlock,
 		},
 		{
 			Name: "Table Row (Wide Gaps)",
-			Condition: func(text string, fontSize, bodyFontSize float64) bool {
+			Condition: func(text string, _, _ float64) bool {
 				// First check if this looks like an equation
 				if a.isLikelyEquationText(text) {
 					return false
@@ -107,7 +110,7 @@ func NewAnalyzerWithConfig(config *LayoutConfig) *Analyzer {
 					if strings.Count(text, "   ") < 2 {
 						return false
 					}
-					gapCount = strings.Count(text, "   ")
+					// 3-space gaps found, continue with segment analysis
 				}
 
 				segments := strings.Split(text, "    ")
@@ -166,14 +169,14 @@ func NewAnalyzerWithConfig(config *LayoutConfig) *Analyzer {
 		},
 		{
 			Name: "Header (Numbered)",
-			Condition: func(text string, fontSize, bodyFontSize float64) bool {
+			Condition: func(text string, _, _ float64) bool {
 				return a.isNumberedHeader(text)
 			},
 			Type: ElementTypeHeader,
 		},
 		{
 			Name: "List Item (Bullet/Number)",
-			Condition: func(text string, fontSize, bodyFontSize float64) bool {
+			Condition: func(text string, _, _ float64) bool {
 				return a.isListItem(text)
 			},
 			Type: ElementTypeList,
@@ -308,7 +311,7 @@ func (a *Analyzer) detectBodyFontSize(blocks []extractor.TextBlock) float64 {
 	}
 
 	var maxCount int
-	var bodySize float64 = 12.0
+	bodySize := 12.0
 	for size, count := range fontSizes {
 		if count > maxCount {
 			maxCount = count
@@ -326,11 +329,12 @@ func (a *Analyzer) blocksToElements(blocks []extractor.TextBlock) []Element {
 	for _, block := range blocks {
 		content := block.Text
 		if strings.TrimSpace(content) != "" {
-			if isMathFont(block.FontName) {
+			switch {
+			case isMathFont(block.FontName):
 				content = "$" + content + "$"
-			} else if isBold(block.FontName) {
+			case isBold(block.FontName):
 				content = "**" + content + "**"
-			} else if isItalic(block.FontName) {
+			case isItalic(block.FontName):
 				content = "*" + content + "*"
 			}
 		}

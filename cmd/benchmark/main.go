@@ -1,3 +1,4 @@
+// Package main implements a benchmark tool for comparing pdf2md output against ground truth.
 package main
 
 import (
@@ -17,7 +18,7 @@ func main() {
 	outputDir := "READoc/output/pdf2md"
 
 	// Ensure output directory exists
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o750); err != nil {
 		log.Fatalf("Failed to create output directory: %v", err)
 	}
 
@@ -60,13 +61,13 @@ func main() {
 		outPath = strings.TrimSuffix(outPath, ".pdf") + ".md"
 
 		// Ensure output subdirectory exists
-		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(outPath), 0o750); err != nil {
 			log.Printf("Failed to create dir for %s: %v", outPath, err)
 			continue
 		}
 
 		// Run pdf2md
-		cmd := exec.Command("./pdf2md", pdfPath, outPath)
+		cmd := exec.Command("./pdf2md", pdfPath, outPath) //nolint:gosec // Benchmark tool, paths are from local filesystem walk
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
@@ -94,7 +95,7 @@ func main() {
 			log.Printf("Failed to read generated file %s: %v", outPath, err)
 			continue
 		}
-		gtBytes, err := os.ReadFile(gtPath)
+		gtBytes, err := os.ReadFile(gtPath) //nolint:gosec // Benchmark reads local ground truth files
 		if err != nil {
 			log.Printf("Failed to read ground truth file %s: %v", gtPath, err)
 			continue
@@ -182,17 +183,4 @@ func levenshtein(s1, s2 []rune) int {
 		row[len2] = prev
 	}
 	return row[len2]
-}
-
-func min(a, b, c int) int {
-	if a < b {
-		if a < c {
-			return a
-		}
-		return c
-	}
-	if b < c {
-		return b
-	}
-	return c
 }

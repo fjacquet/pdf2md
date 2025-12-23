@@ -41,11 +41,11 @@ func TestQuality_EndToEnd(t *testing.T) {
 	}
 
 	// Remove previous output
-	os.Remove(outputPath)
-	defer os.Remove(outputPath)
+	_ = os.Remove(outputPath)
+	defer func() { _ = os.Remove(outputPath) }()
 
 	// Run command: pdf2md <input> <output>
-	cmd := exec.Command(binaryPath, inputPath, outputPath)
+	cmd := exec.Command(binaryPath, inputPath, outputPath) //nolint:gosec // Test binary with controlled paths
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Command failed: %v\nOutput: %s", err, output)
@@ -57,7 +57,7 @@ func TestQuality_EndToEnd(t *testing.T) {
 	}
 
 	// Read output content
-	contentBytes, err := os.ReadFile(outputPath)
+	contentBytes, err := os.ReadFile(outputPath) //nolint:gosec // Test reads output file we just created
 	if err != nil {
 		t.Fatal(err)
 	}

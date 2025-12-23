@@ -60,7 +60,7 @@ func TestReader_IncrementalUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	if _, err := tmpfile.Write(fileContent); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestReader_IncrementalUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReader failed: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// If we didn't follow /Prev, we won't find Object 1 (Root) in the XRef table,
 	// because the last XRef only has Object 3.

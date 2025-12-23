@@ -238,7 +238,7 @@ func normalizeRow(row string) string {
 
 	// Ensure trailing pipe
 	if !strings.HasSuffix(row, "|") {
-		row = row + " |"
+		row += " |"
 	}
 
 	return row

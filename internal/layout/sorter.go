@@ -43,48 +43,6 @@ func SortBlocks(blocks []extractor.TextBlock) []extractor.TextBlock {
 	return detectAndSortColumns(blocks)
 }
 
-func splitByRows(blocks []extractor.TextBlock, gapThreshold float64) [][]extractor.TextBlock {
-	if len(blocks) == 0 {
-		return nil
-	}
-
-	// Sort by Top Y Descending
-	sorted := make([]extractor.TextBlock, len(blocks))
-	copy(sorted, blocks)
-	sort.Slice(sorted, func(i, j int) bool {
-		return (sorted[i].Y + sorted[i].Height) > (sorted[j].Y + sorted[j].Height)
-	})
-
-	var rows [][]extractor.TextBlock
-	var currentRow []extractor.TextBlock
-
-	currentRow = append(currentRow, sorted[0])
-	currentBottom := sorted[0].Y
-
-	for i := 1; i < len(sorted); i++ {
-		b := sorted[i]
-		top := b.Y + b.Height
-
-		// Check for gap
-		// If the top of the current block is significantly below the bottom of the previous cluster
-		if top < currentBottom-gapThreshold {
-			// Gap found!
-			rows = append(rows, currentRow)
-			currentRow = []extractor.TextBlock{b}
-			currentBottom = b.Y
-		} else {
-			// Overlap or close enough
-			currentRow = append(currentRow, b)
-			if b.Y < currentBottom {
-				currentBottom = b.Y
-			}
-		}
-	}
-	rows = append(rows, currentRow)
-
-	return rows
-}
-
 func detectAndSortColumns(blocks []extractor.TextBlock) []extractor.TextBlock {
 	if len(blocks) <= 1 {
 		return blocks
@@ -210,11 +168,12 @@ func detectAndSortColumns(blocks []extractor.TextBlock) []extractor.TextBlock {
 	var left, right, spanning []extractor.TextBlock
 
 	for _, b := range blocks {
-		if b.X < gutterX && b.X+b.Width > gutterX {
+		switch {
+		case b.X < gutterX && b.X+b.Width > gutterX:
 			spanning = append(spanning, b)
-		} else if b.X+b.Width <= gutterX {
+		case b.X+b.Width <= gutterX:
 			left = append(left, b)
-		} else {
+		default:
 			right = append(right, b)
 		}
 	}
@@ -297,13 +256,14 @@ func detectAndSortColumns(blocks []extractor.TextBlock) []extractor.TextBlock {
 		blockTop := b.Y + b.Height
 		blockBottom := b.Y
 
-		if blockBottom >= columnMaxY {
+		switch {
+		case blockBottom >= columnMaxY:
 			// Block is entirely above the columns
 			spanningAbove = append(spanningAbove, b)
-		} else if blockTop <= columnMinY {
+		case blockTop <= columnMinY:
 			// Block is entirely below the columns
 			spanningBelow = append(spanningBelow, b)
-		} else {
+		default:
 			// Block overlaps with column region - need more careful handling
 			// Check if it's primarily above or below the middle of columns
 			columnMidY := (columnMinY + columnMaxY) / 2
@@ -427,11 +387,12 @@ func detectAndSortRows(blocks []extractor.TextBlock) []extractor.TextBlock {
 
 	var lower, upper, spanning []extractor.TextBlock
 	for _, b := range blocks {
-		if b.Y < gutterY && b.Y+b.Height > gutterY {
+		switch {
+		case b.Y < gutterY && b.Y+b.Height > gutterY:
 			spanning = append(spanning, b)
-		} else if b.Y+b.Height <= gutterY {
+		case b.Y+b.Height <= gutterY:
 			lower = append(lower, b)
-		} else {
+		default:
 			upper = append(upper, b)
 		}
 	}
@@ -478,7 +439,7 @@ func checkVerticalFlow(blocks []extractor.TextBlock) int {
 			}
 			// Sentence continuation (lowercase start)
 			if firstChar >= 'a' && firstChar <= 'z' {
-				score += 1
+				score++
 			}
 		}
 	}
@@ -508,7 +469,7 @@ func checkHorizontalFlow(left, right []extractor.TextBlock) int {
 						}
 					} else if firstChar >= 'a' && firstChar <= 'z' {
 						// Sentence continuation (lowercase start) without hyphen
-						score += 1
+						score++
 					}
 					// Code syntax flow?
 					// e.g. "mkdir" -> "-p"

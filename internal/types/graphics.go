@@ -8,6 +8,7 @@ type Point struct {
 // PathOperationType represents the type of path operation
 type PathOperationType string
 
+// Path operation type constants.
 const (
 	PathOpMoveTo  PathOperationType = "M"
 	PathOpLineTo  PathOperationType = "L"

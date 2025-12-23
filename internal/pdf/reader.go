@@ -27,14 +27,14 @@ type Reader struct {
 
 // NewReader creates a new PDF reader
 func NewReader(path string) (*Reader, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: Path is user-provided, intentional for file reading library
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 
 	info, err := f.Stat()
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("failed to stat file %s: %w", path, err)
 	}
 
@@ -45,7 +45,7 @@ func NewReader(path string) (*Reader, error) {
 	}
 
 	if err := r.readTrailer(); err != nil {
-		r.Close()
+		_ = r.Close()
 		return nil, fmt.Errorf("failed to read trailer: %w", err)
 	}
 
@@ -440,7 +440,7 @@ func (r *Reader) extractRoot() error {
 }
 
 func readField(b []byte) int64 {
-	var val int64 = 0
+	var val int64
 	for _, x := range b {
 		val = (val << 8) | int64(x)
 	}
@@ -540,7 +540,7 @@ func (r *Reader) parseObjStm(stream Stream, targetIndex int) (Object, error) {
 	}
 	n, ok := nObj.(Integer)
 	if !ok {
-		return nil, fmt.Errorf("N is not an integer")
+		return nil, fmt.Errorf("n is not an integer")
 	}
 
 	firstObj, ok := stream.Dictionary[Name("First")]
@@ -549,7 +549,7 @@ func (r *Reader) parseObjStm(stream Stream, targetIndex int) (Object, error) {
 	}
 	first, ok := firstObj.(Integer)
 	if !ok {
-		return nil, fmt.Errorf("First is not an integer")
+		return nil, fmt.Errorf("first is not an integer")
 	}
 
 	// Parse header (N pairs of integers)

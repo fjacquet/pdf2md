@@ -1,4 +1,4 @@
-package types
+package types //nolint:revive // Package name "types" is a common pattern for shared types
 
 // TextBlock represents a block of text with its position and font information
 type TextBlock struct {

@@ -184,24 +184,26 @@ func parseInlineImageValue(tok Token) Object {
 		// Check if integer or real
 		if strings.Contains(tok.Value, ".") {
 			var f float64
-			fmt.Sscanf(tok.Value, "%f", &f)
+			_, _ = fmt.Sscanf(tok.Value, "%f", &f)
 			return Real(f)
 		}
 		var i int
-		fmt.Sscanf(tok.Value, "%d", &i)
+		_, _ = fmt.Sscanf(tok.Value, "%d", &i)
 		return Integer(i)
 	case TokenName:
 		// Expand abbreviations for filter/colorspace values
 		return Name(expandInlineImageValue(tok.Value))
 	case TokenKeyword:
 		// Keywords like true/false
-		if tok.Value == "true" {
+		switch tok.Value {
+		case "true":
 			return Boolean(true)
-		} else if tok.Value == "false" {
+		case "false":
 			return Boolean(false)
+		default:
+			// Abbreviated name without /
+			return Name(expandInlineImageValue(tok.Value))
 		}
-		// Abbreviated name without /
-		return Name(expandInlineImageValue(tok.Value))
 	case TokenArrayStart:
 		// Would need to parse full array, but inline images rarely use arrays
 		return nil
@@ -257,7 +259,7 @@ func colorSpaceComponents(cs string) int {
 }
 
 // readInlineImageData reads the raw image data until EI marker
-func readInlineImageData(tokenizer *Tokenizer, expectedLen int) ([]byte, error) {
+func readInlineImageData(tokenizer *Tokenizer, _ int) ([]byte, error) {
 	// Get the underlying reader to read raw bytes
 	// The ID keyword has been consumed, and there should be one whitespace char
 	// followed by the image data, then whitespace + EI

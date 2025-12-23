@@ -88,8 +88,8 @@ func TestDecodeASCII85(t *testing.T) {
 		},
 		{
 			name:     "partial group (2 chars)",
-			input:    []byte("@/~>"),        // Encodes to 0x61 (partial)
-			expected: []byte{0x61},          // 'a'
+			input:    []byte("@/~>"), // Encodes to 0x61 (partial)
+			expected: []byte{0x61},   // 'a'
 		},
 		{
 			name:    "z inside group",
@@ -98,7 +98,7 @@ func TestDecodeASCII85(t *testing.T) {
 		},
 		{
 			name:     "Man string",
-			input:    []byte("9jqo^~>"),      // Known encoding of "Man "
+			input:    []byte("9jqo^~>"), // Known encoding of "Man "
 			expected: []byte("Man "),
 		},
 	}

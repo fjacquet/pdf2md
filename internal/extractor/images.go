@@ -16,7 +16,7 @@ func SaveImages(images []types.Image, outputDir, prefix string) ([]string, error
 
 	// Create images directory
 	imgDir := filepath.Join(outputDir, "images")
-	if err := os.MkdirAll(imgDir, 0755); err != nil {
+	if err := os.MkdirAll(imgDir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create image directory: %w", err)
 	}
 
@@ -33,7 +33,7 @@ func SaveImages(images []types.Image, outputDir, prefix string) ([]string, error
 		path := filepath.Join(imgDir, filename)
 
 		// Write data
-		if err := os.WriteFile(path, img.Data, 0644); err != nil {
+		if err := os.WriteFile(path, img.Data, 0o600); err != nil {
 			fmt.Printf("Warning: failed to save image %s: %v\n", filename, err)
 			continue
 		}
@@ -53,7 +53,7 @@ func SaveImages(images []types.Image, outputDir, prefix string) ([]string, error
 // SaveGraphics saves vector graphics to the output directory
 func SaveGraphics(graphics []types.VectorGraphic, outputDir, prefix string) ([]string, error) {
 	imagesDir := filepath.Join(outputDir, "images")
-	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+	if err := os.MkdirAll(imagesDir, 0o750); err != nil {
 		return nil, err
 	}
 
@@ -71,7 +71,7 @@ func SaveGraphics(graphics []types.VectorGraphic, outputDir, prefix string) ([]s
 		// Convert to SVG
 		svgContent := ToSVG(vg)
 
-		if err := os.WriteFile(path, []byte(svgContent), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(svgContent), 0o600); err != nil {
 			return nil, err
 		}
 

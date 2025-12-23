@@ -8,8 +8,7 @@ import (
 
 // handleXObject handles Do
 func (in *Interpreter) handleXObject(op string) error {
-	switch op {
-	case "Do": // Invoke named XObject: name Do
+	if op == "Do" { // Invoke named XObject: name Do
 		if len(in.Stack) < 1 {
 			return fmt.Errorf("stack underflow for Do")
 		}
@@ -72,18 +71,18 @@ func (in *Interpreter) processXObject(name Name) error {
 
 	subtype, _ := stream.Dictionary[Name("Subtype")].(Name)
 
-	if subtype == "Image" {
+	switch subtype {
+	case "Image":
 		return in.extractImage(name, stream)
-	} else if subtype == "Form" {
+	case "Form":
 		return in.processFormXObject(name, stream)
+	default:
+		return nil
 	}
-
-	return nil
 }
 
 // processFormXObject handles Form XObjects which contain nested content streams
 func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
-
 	// Get the Form's Resources dictionary (may inherit from parent)
 	var formResources Dictionary
 	if res, ok := stream.Dictionary[Name("Resources")].(Dictionary); ok {

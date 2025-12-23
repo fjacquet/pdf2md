@@ -94,7 +94,7 @@ func TestNewAnalyzerWithConfig(t *testing.T) {
 	}
 
 	// Test with custom config
-	customCfg := &LayoutConfig{
+	customCfg := &Config{
 		ColumnGapThreshold:     25.0,
 		HeaderSizeRatio:        1.5,
 		H1Ratio:                2.5,
@@ -116,7 +116,7 @@ func TestNewAnalyzerWithConfig(t *testing.T) {
 
 func TestCalculateHeaderLevelWithConfig(t *testing.T) {
 	// Test with custom header ratios
-	customCfg := &LayoutConfig{
+	customCfg := &Config{
 		H1Ratio: 2.5,
 		H2Ratio: 2.0,
 		H3Ratio: 1.75,

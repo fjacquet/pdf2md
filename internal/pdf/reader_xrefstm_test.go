@@ -75,19 +75,21 @@ func TestReader_XRefStm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.Write(buf.Bytes()); err != nil {
 		t.Fatalf("Failed to write to temp file: %v", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
 
 	// Open with Reader
 	r, err := NewReader(tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Failed to open reader: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Verify Root
 	if r.Root == nil {
@@ -108,7 +110,7 @@ func TestReader_XRefStm(t *testing.T) {
 func compress(data []byte) []byte {
 	var b bytes.Buffer
 	w := zlib.NewWriter(&b)
-	w.Write(data)
-	w.Close()
+	_, _ = w.Write(data)
+	_ = w.Close()
 	return b.Bytes()
 }

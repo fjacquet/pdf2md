@@ -14,7 +14,7 @@ func TestSaveImages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	images := []types.Image{
 		{
@@ -64,7 +64,7 @@ func TestSaveGraphics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	graphics := []types.VectorGraphic{
 		{
@@ -95,7 +95,7 @@ func TestSaveGraphics(t *testing.T) {
 	}
 
 	// Check content (basic check)
-	content, err := os.ReadFile(fullPath)
+	content, err := os.ReadFile(fullPath) //nolint:gosec // Test reads file we just created
 	if err != nil {
 		t.Fatal(err)
 	}

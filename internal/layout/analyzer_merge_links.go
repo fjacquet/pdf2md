@@ -7,7 +7,6 @@ import (
 
 // MergeSameLinkElements merges consecutive elements that share the same LinkURI
 func (a *Analyzer) MergeSameLinkElements(elements []Element) []Element {
-
 	merged := make([]Element, 0, len(elements))
 	current := elements[0]
 

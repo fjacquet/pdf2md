@@ -117,23 +117,10 @@ func TestTokenizer_ReadHexString(t *testing.T) {
 
 func TestTokenizer_ReadStream(t *testing.T) {
 	// Test with length
-	data := "stream\nHello World\nendstream"
-	tokenizer := NewTokenizer(strings.NewReader(data))
-	// Consume "stream" keyword (handled by parser usually, but here we call ReadStream directly)
-	// Actually ReadStream expects to be called AFTER "stream" keyword is consumed?
-	// Looking at code: "The keyword stream that follows the stream dictionary should be followed by an end-of-line marker..."
-	// So we need to consume "stream" first?
-	// No, ReadStream is called when we see "stream" keyword?
-	// Let's check Parser. It calls NextToken, sees "stream", then calls ReadStream.
-	// So Tokenizer.ReadStream starts reading AFTER "stream" keyword?
-	// No, Tokenizer.ReadStream reads the EOL after "stream".
-	// So we should position the reader right after "stream".
-
-	// Wait, NextToken consumes "stream" and returns it.
-	// So the reader is positioned after "stream".
-
-	// Let's simulate that.
-	tokenizer = NewTokenizer(strings.NewReader("\nHello World\nendstream"))
+	// Note: ReadStream expects to be called after "stream" keyword is consumed.
+	// NextToken consumes "stream" and returns it, so the reader is positioned after "stream".
+	// We simulate that by starting with the EOL after "stream".
+	tokenizer := NewTokenizer(strings.NewReader("\nHello World\nendstream"))
 	content, err := tokenizer.ReadStream(11)
 	if err != nil {
 		t.Fatalf("ReadStream failed: %v", err)

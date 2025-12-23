@@ -35,24 +35,26 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 				wideGapThreshold = current.FontSize * 3.0
 			}
 
-			if gap < threshold {
+			switch {
+			case gap < threshold:
 				current = a.mergeElementsWithLinks(current, next, "")
-			} else if gap > wideGapThreshold {
+			case gap > wideGapThreshold:
 				if len(current.Content) > 40 || len(next.Content) > 40 {
 					merged = append(merged, current)
 					current = next
 				} else {
 					isEqNum := a.isStartOfEqNum(next, elements[i+1:])
 
-					if isEqNum {
+					switch {
+					case isEqNum:
 						current = a.mergeElementsWithLinks(current, next, " ")
-					} else if strings.Contains(current.Content, "$") || strings.Contains(next.Content, "$") {
+					case strings.Contains(current.Content, "$") || strings.Contains(next.Content, "$"):
 						current = a.mergeElementsWithLinks(current, next, "   ")
-					} else {
+					default:
 						current = a.mergeElementsWithLinks(current, next, "    ")
 					}
 				}
-			} else {
+			default:
 				if strings.HasSuffix(current.Content, "-") || strings.HasSuffix(current.Content, "‐") {
 					current = a.mergeElementsWithLinks(current, next, "")
 				} else {
@@ -215,12 +217,8 @@ func (a *Analyzer) validateTable(current *Element) *Element {
 				newContent.WriteString("\n")
 			}
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "| ") {
-				trimmed = trimmed[2:]
-			}
-			if strings.HasSuffix(trimmed, " |") {
-				trimmed = trimmed[:len(trimmed)-2]
-			}
+			trimmed = strings.TrimPrefix(trimmed, "| ")
+			trimmed = strings.TrimSuffix(trimmed, " |")
 			newContent.WriteString(trimmed)
 		}
 		current.Content = newContent.String()

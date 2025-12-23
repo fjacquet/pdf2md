@@ -32,7 +32,7 @@ func TestReader_Resolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	if _, err := tmpfile.Write(content); err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestReader_Resolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReader failed: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Test Resolve with direct object
 	directObj := Integer(123)

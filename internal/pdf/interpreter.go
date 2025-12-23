@@ -77,10 +77,6 @@ func (in *Interpreter) Process(content []byte) ([]types.TextBlock, []types.Image
 	return in.TextBlocks, in.Images, in.Graphics, nil
 }
 
-func (in *Interpreter) executeOperator(op string) error {
-	return in.executeOperatorWithTokenizer(op, nil)
-}
-
 func (in *Interpreter) executeOperatorWithTokenizer(op string, tokenizer *Tokenizer) error {
 	switch op {
 	// Text Object

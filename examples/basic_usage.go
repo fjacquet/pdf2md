@@ -1,3 +1,4 @@
+// Package main provides an example of using pdf2md as a library.
 package main
 
 import (
@@ -26,15 +27,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize PDF extractor: %v", err)
 	}
-	defer ext.Close()
+	defer func() { _ = ext.Close() }()
 
 	pageCount, err := ext.GetPageCount()
 	if err != nil {
-		log.Fatalf("Failed to get page count: %v", err)
+		log.Fatalf("Failed to get page count: %v", err) //nolint:gocritic // exitAfterDefer: intentional early exit on error
 	}
 	pc, err := ext.GetPageCount()
 	if err != nil {
-		log.Fatalf("Failed to get page count: %v", err)
+		log.Fatalf("Failed to get page count: %v", err) //nolint:gocritic // exitAfterDefer: intentional early exit on error
 	}
 	fmt.Printf("PDF has %d pages\n", pc)
 

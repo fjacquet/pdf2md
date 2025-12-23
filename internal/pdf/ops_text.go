@@ -272,7 +272,7 @@ func (in *Interpreter) addTextBlock(text string, width float64) float64 {
 
 	// Normalize X and Width if Width is negative (flipped axis)
 	if finalWidth < 0 {
-		x = x + finalWidth
+		x += finalWidth
 		finalWidth = -finalWidth
 	}
 
@@ -280,7 +280,8 @@ func (in *Interpreter) addTextBlock(text string, width float64) float64 {
 	// Transform (0, Tfs)
 	tx3, ty3 := in.Tm.Transform(0, in.State.Tfs)
 	x3, y3 := in.State.CTM.Transform(tx3, ty3)
-	finalFontSize := math.Sqrt(math.Pow(x3-x, 2) + math.Pow(y3-y, 2))
+	dx, dy := x3-x, y3-y
+	finalFontSize := math.Sqrt(dx*dx + dy*dy)
 
 	// Get real font name
 	fontName := string(in.State.Tf)

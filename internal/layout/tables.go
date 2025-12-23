@@ -36,12 +36,12 @@ type TableStructure struct {
 
 // TableDetector detects tables from text blocks and optional graphics
 type TableDetector struct {
-	MinColumns       int     // Minimum columns to be considered a table (default: 2)
-	MinRows          int     // Minimum rows to be considered a table (default: 2)
-	ColumnTolerance  float64 // X-position tolerance for column alignment (default: 5.0)
-	RowTolerance     float64 // Y-position tolerance for row alignment (default: 3.0)
-	MinConfidence    float64 // Minimum confidence score (default: 0.5)
-	GapThreshold     float64 // Minimum gap ratio between columns (default: 2.0)
+	MinColumns      int     // Minimum columns to be considered a table (default: 2)
+	MinRows         int     // Minimum rows to be considered a table (default: 2)
+	ColumnTolerance float64 // X-position tolerance for column alignment (default: 5.0)
+	RowTolerance    float64 // Y-position tolerance for row alignment (default: 3.0)
+	MinConfidence   float64 // Minimum confidence score (default: 0.5)
+	GapThreshold    float64 // Minimum gap ratio between columns (default: 2.0)
 }
 
 // NewTableDetector creates a new table detector with default settings
@@ -177,7 +177,7 @@ func (td *TableDetector) groupByY(blocks []extractor.TextBlock) [][]int {
 
 	var rows [][]int
 	var currentRow []int
-	var currentY float64 = math.MaxFloat64
+	currentY := math.MaxFloat64
 
 	for _, p := range pairs {
 		if math.Abs(p.y-currentY) > td.RowTolerance {
@@ -387,7 +387,7 @@ func (td *TableDetector) findColumnIndex(x float64, columnPositions []float64) i
 }
 
 // detectHeaderRow checks if the first row looks like a header
-func (td *TableDetector) detectHeaderRow(cells [][]TableCell, blocks []extractor.TextBlock) bool {
+func (td *TableDetector) detectHeaderRow(cells [][]TableCell, _ []extractor.TextBlock) bool {
 	if len(cells) < 2 {
 		return false
 	}
@@ -464,7 +464,8 @@ func isNumericContent(s string) bool {
 func (td *TableDetector) buildTableFromGrid(regionBlocks []struct {
 	index int
 	block extractor.TextBlock
-}, region gridRegion) *TableStructure {
+}, region GridRegion,
+) *TableStructure {
 	// Extract just the blocks
 	var blocks []extractor.TextBlock
 	for _, rb := range regionBlocks {
@@ -477,7 +478,7 @@ func (td *TableDetector) buildTableFromGrid(regionBlocks []struct {
 	}
 
 	// Use grid lines to define columns
-	columnPositions := region.verticalLines
+	columnPositions := region.VerticalLines
 	if len(columnPositions) < td.MinColumns+1 {
 		return nil
 	}
@@ -532,10 +533,10 @@ func (td *TableDetector) buildTableFromGrid(regionBlocks []struct {
 		NumRows:    numRows,
 		NumCols:    numCols,
 		HasHeader:  td.detectHeaderRow(cells, blocks),
-		X:          region.x,
-		Y:          region.y,
-		Width:      region.width,
-		Height:     region.height,
+		X:          region.X,
+		Y:          region.Y,
+		Width:      region.Width,
+		Height:     region.Height,
 		Confidence: 0.9, // Graphics-based detection is high confidence
 	}
 }

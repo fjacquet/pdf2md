@@ -147,26 +147,22 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 		}
 
 		if cidFontDict != nil {
-			if err := fm.parseCIDFont(font, cidFontDict); err != nil {
-				fmt.Printf("Error parsing CID font: %v\n", err)
-			}
+			fm.parseCIDFont(font, cidFontDict)
 		}
 	}
 
 	// Parse Encoding
 	if encodingObj, ok := dict[Name("Encoding")]; ok {
 		fm.parseEncoding(font, encodingObj)
-	} else {
-		// Default encoding based on Subtype?
+	} else if font.Subtype == "Type1" || font.Subtype == "TrueType" {
+		// Default encoding based on Subtype
 		// For Type1, default is StandardEncoding if not specified (usually)
 		// For TrueType, it's complicated.
 		// Type3 fonts MUST have an Encoding entry per spec, but handle gracefully if missing.
 		// Let's assume StandardEncoding for simple fonts if nothing else.
-		if font.Subtype == "Type1" || font.Subtype == "TrueType" {
-			for i, name := range StandardEncoding {
-				if name != "" {
-					font.Encoding[i] = name
-				}
+		for i, name := range StandardEncoding {
+			if name != "" {
+				font.Encoding[i] = name
 			}
 		}
 	}
@@ -198,10 +194,7 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 				return nil, err
 			}
 
-			err = font.parseToUnicodeCMap(data)
-			if err != nil {
-				return nil, err
-			}
+			font.parseToUnicodeCMap(data)
 		}
 	}
 
@@ -244,11 +237,9 @@ func (fm *FontManager) parseEncoding(font *Font, encodingObj Object) {
 	}
 
 	// Apply base encoding
-	if baseEncoding != nil {
-		for i, name := range baseEncoding {
-			if name != "" {
-				font.Encoding[i] = name
-			}
+	for i, name := range baseEncoding {
+		if name != "" {
+			font.Encoding[i] = name
 		}
 	}
 
@@ -345,7 +336,7 @@ func (fm *FontManager) parseType3Font(font *Font, dict Dictionary) {
 	}
 }
 
-func (fm *FontManager) parseCIDFont(font *Font, dict Dictionary) error {
+func (fm *FontManager) parseCIDFont(font *Font, dict Dictionary) {
 	font.CIDWidths = make(map[int]float64)
 	font.DefaultWidth = 1000 // Default default width
 
@@ -437,7 +428,6 @@ func (fm *FontManager) parseCIDFont(font *Font, dict Dictionary) error {
 			}
 		}
 	}
-	return nil
 }
 
 // GetWidth returns the width of the character code
@@ -556,7 +546,7 @@ func (f *Font) CalculateWidth(s string) float64 {
 	return width
 }
 
-func (f *Font) parseToUnicodeCMap(data []byte) error {
+func (f *Font) parseToUnicodeCMap(data []byte) {
 	// Simple parser for CMap
 	// We look for:
 	// <count> beginbfchar
@@ -662,7 +652,6 @@ func (f *Font) parseToUnicodeCMap(data []byte) error {
 			}
 		}
 	}
-	return nil
 }
 
 func parseHexStringOrInt(t Token) int {

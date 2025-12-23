@@ -11,6 +11,7 @@ import (
 // TokenType represents the type of a token
 type TokenType int
 
+// Token types for PDF parsing.
 const (
 	TokenError TokenType = iota
 	TokenEOF
@@ -80,7 +81,7 @@ func (t *Tokenizer) NextToken() (Token, error) {
 		// Could be HexString <...> or DictStart <<
 		next, err := t.peekByte()
 		if err == nil && next == '<' {
-			t.readByte() // consume second <
+			_, _ = t.readByte() // consume second <
 			return Token{Type: TokenDictStart, Value: "<<"}, nil
 		}
 		return t.readHexString()
@@ -89,7 +90,7 @@ func (t *Tokenizer) NextToken() (Token, error) {
 		// But if we see it here, it might be >>
 		next, err := t.peekByte()
 		if err == nil && next == '>' {
-			t.readByte() // consume second >
+			_, _ = t.readByte() // consume second >
 			return Token{Type: TokenDictEnd, Value: ">>"}, nil
 		}
 		return Token{Type: TokenError, Value: ">"}, fmt.Errorf("unexpected >")
@@ -97,11 +98,11 @@ func (t *Tokenizer) NextToken() (Token, error) {
 		return t.readName()
 	case '%':
 		// Should have been handled by skipWhitespaceAndComments, but just in case
-		t.unreadByte()
-		t.skipWhitespaceAndComments()
+		_ = t.unreadByte()
+		_ = t.skipWhitespaceAndComments()
 		return t.NextToken()
 	default:
-		t.unreadByte()
+		_ = t.unreadByte()
 		return t.readNumericOrKeyword()
 	}
 }
@@ -131,7 +132,7 @@ func (t *Tokenizer) skipWhitespaceAndComments() error {
 			continue
 		}
 
-		t.unreadByte()
+		_ = t.unreadByte()
 		return nil
 	}
 }
@@ -148,7 +149,7 @@ func (t *Tokenizer) readName() (Token, error) {
 		}
 
 		if isWhitespace(ch) || isDelimiter(ch) {
-			t.unreadByte()
+			_ = t.unreadByte()
 			break
 		}
 
@@ -222,7 +223,7 @@ func (t *Tokenizer) readString() (Token, error) {
 				for i := 0; i < 2; i++ {
 					next, err := t.peekByte()
 					if err == nil && isOctalDigit(next) {
-						t.readByte()
+						_, _ = t.readByte()
 						code = code*8 + int(next-'0')
 					} else {
 						break
@@ -247,7 +248,7 @@ func (t *Tokenizer) readString() (Token, error) {
 					// Backslash at end of line -> ignore both
 					next, err := t.peekByte()
 					if err == nil && next == '\n' {
-						t.readByte()
+						_, _ = t.readByte()
 					}
 				case '\n':
 					// Backslash at end of line -> ignore
@@ -265,9 +266,10 @@ func (t *Tokenizer) readString() (Token, error) {
 			continue
 		}
 
-		if ch == '(' {
+		switch ch {
+		case '(':
 			parens++
-		} else if ch == ')' {
+		case ')':
 			parens--
 		}
 
@@ -315,7 +317,7 @@ func (t *Tokenizer) readNumericOrKeyword() (Token, error) {
 		}
 
 		if isWhitespace(ch) || isDelimiter(ch) {
-			t.unreadByte()
+			_ = t.unreadByte()
 			break
 		}
 		buf.WriteByte(ch)
@@ -346,6 +348,7 @@ func (t *Tokenizer) peekByte() (byte, error) {
 	return bytes[0], nil
 }
 
+// ReadStream reads stream content from the PDF.
 func (t *Tokenizer) ReadStream(length int64) ([]byte, error) {
 	// Skip EOL after "stream"
 	// The stream keyword is followed by either CRLF or LF.
@@ -353,14 +356,15 @@ func (t *Tokenizer) ReadStream(length int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if ch == '\r' {
+	switch ch {
+	case '\r':
 		next, err := t.peekByte()
 		if err == nil && next == '\n' {
-			t.readByte()
+			_, _ = t.readByte()
 		}
-	} else if ch == '\n' {
-		// OK
-	} else {
+	case '\n':
+		// OK - valid EOL after stream keyword
+	default:
 		// Spec says: "The keyword stream that follows the stream dictionary should be followed by an end-of-line marker consisting of either a carriage return and a line feed or just a line feed, and not by a carriage return alone."
 		// But in practice, whitespace might vary.
 		// If it's not EOL, maybe we should unread?
@@ -469,7 +473,7 @@ func (t *Tokenizer) ReadUntilEI() ([]byte, error) {
 	// Don't include this initial whitespace in the data
 	if !isWhitespace(ch) {
 		// If no whitespace, put it back
-		t.unreadByte()
+		_ = t.unreadByte()
 	}
 
 	// Read bytes until we find: whitespace + "EI" + (whitespace/delimiter/EOF)

@@ -68,16 +68,15 @@ startxref
 	// But for NewCustomExtractor it just opens the file.
 
 	path := createTempPDF(t, pdfContent)
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 
 	ext, err := NewCustomExtractor(path)
-	if err != nil {
-		// It might fail if NewReader tries to read XRef immediately and fails due to bad offsets.
-		// Let's see.
-		// If it fails, we need to construct valid PDF.
-	} else {
-		ext.Close()
+	if err == nil {
+		// Successfully created extractor, close it
+		_ = ext.Close()
 	}
+	// It might fail if NewReader tries to read XRef immediately and fails due to bad offsets.
+	// That's acceptable for this test - we're just checking it doesn't panic.
 }
 
 func TestCustomExtractor_ExtractTextBlocks_InvalidPage(t *testing.T) {
@@ -103,13 +102,13 @@ func TestCustomExtractor_ExtractTextBlocks_InvalidPage(t *testing.T) {
 
 	content := []byte(body + trailer + footer)
 	path := createTempPDF(t, content)
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 
 	ext, err := NewCustomExtractor(path)
 	if err != nil {
 		t.Fatalf("NewCustomExtractor failed: %v", err)
 	}
-	defer ext.Close()
+	defer func() { _ = ext.Close() }()
 
 	// Invalid page index (0 or > count)
 	// PDF pages are 1-indexed in GetPage usually?

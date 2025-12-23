@@ -81,7 +81,7 @@ func decodeFlate(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	return io.ReadAll(r)
 }
@@ -99,11 +99,7 @@ func applyPredictor(data []byte, predictor, columns, colors, bpc int) ([]byte, e
 	rowLen := (columns*colors*bpc + 7) / 8
 	stride := rowLen + 1 // +1 for filter byte
 
-	if len(data)%stride != 0 {
-		// It might be that the last row is incomplete or something, but standard says it should match.
-		// However, let's be robust.
-	}
-
+	// Note: len(data)%stride != 0 means last row is incomplete, but we handle it gracefully
 	rows := len(data) / stride
 	if rows == 0 {
 		return data, nil
@@ -281,7 +277,7 @@ func decodeASCII85(data []byte) ([]byte, error) {
 			return nil, fmt.Errorf("invalid ASCII85 character: %c (%d)", b, b)
 		}
 
-		tuple[tupleIndex] = b - '!'
+		tuple[tupleIndex] = b - '!' //nolint:gosec // tupleIndex is always 0-4, reset to 0 when it reaches 5
 		tupleIndex++
 
 		if tupleIndex == 5 {
@@ -468,14 +464,15 @@ func (d *lzwDecoder) decode() ([]byte, error) {
 		}
 
 		var seq []byte
-		if code < d.nextCode {
+		switch {
+		case code < d.nextCode:
 			// Code is in the table
 			seq = d.table[code]
-		} else if code == d.nextCode && prevSeq != nil {
+		case code == d.nextCode && prevSeq != nil:
 			// Special case: code not yet in table
 			seq = append([]byte{}, prevSeq...)
 			seq = append(seq, prevSeq[0])
-		} else {
+		default:
 			return nil, fmt.Errorf("invalid LZW code: %d (nextCode=%d)", code, d.nextCode)
 		}
 

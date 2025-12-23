@@ -8,45 +8,45 @@ import (
 
 func TestClassifyLine(t *testing.T) {
 	tests := []struct {
-		name         string
-		x1, y1       float64
-		x2, y2       float64
-		wantHoriz    bool
-		wantVert     bool
-		angleThresh  float64
-		minLength    float64
+		name        string
+		x1, y1      float64
+		x2, y2      float64
+		wantHoriz   bool
+		wantVert    bool
+		angleThresh float64
+		minLength   float64
 	}{
 		{
-			name:        "horizontal line",
-			x1:          0, y1: 100,
-			x2:          100, y2: 100,
+			name: "horizontal line",
+			x1:   0, y1: 100,
+			x2: 100, y2: 100,
 			wantHoriz:   true,
 			wantVert:    false,
 			angleThresh: 5.0,
 			minLength:   20.0,
 		},
 		{
-			name:        "vertical line",
-			x1:          50, y1: 0,
-			x2:          50, y2: 100,
+			name: "vertical line",
+			x1:   50, y1: 0,
+			x2: 50, y2: 100,
 			wantHoriz:   false,
 			wantVert:    true,
 			angleThresh: 5.0,
 			minLength:   20.0,
 		},
 		{
-			name:        "diagonal line",
-			x1:          0, y1: 0,
-			x2:          100, y2: 100,
+			name: "diagonal line",
+			x1:   0, y1: 0,
+			x2: 100, y2: 100,
 			wantHoriz:   false,
 			wantVert:    false,
 			angleThresh: 5.0,
 			minLength:   20.0,
 		},
 		{
-			name:        "too short",
-			x1:          0, y1: 0,
-			x2:          5, y2: 0,
+			name: "too short",
+			x1:   0, y1: 0,
+			x2: 5, y2: 0,
 			wantHoriz:   false, // nil returned
 			wantVert:    false,
 			angleThresh: 5.0,
@@ -138,10 +138,10 @@ func TestFindGridRegions(t *testing.T) {
 	}
 
 	region := regions[0]
-	if len(region.horizontalLines) < 2 {
+	if len(region.HorizontalLines) < 2 {
 		t.Errorf("expected at least 2 horizontal lines in region")
 	}
-	if len(region.verticalLines) < 2 {
+	if len(region.VerticalLines) < 2 {
 		t.Errorf("expected at least 2 vertical lines in region")
 	}
 }
@@ -188,16 +188,16 @@ func TestExtractRectangle(t *testing.T) {
 		t.Fatal("expected rectangle, got nil")
 	}
 
-	if rect.x != 10 {
-		t.Errorf("expected x=10, got %f", rect.x)
+	if rect.X != 10 {
+		t.Errorf("expected x=10, got %f", rect.X)
 	}
-	if rect.y != 10 {
-		t.Errorf("expected y=10, got %f", rect.y)
+	if rect.Y != 10 {
+		t.Errorf("expected y=10, got %f", rect.Y)
 	}
-	if rect.width != 90 {
-		t.Errorf("expected width=90, got %f", rect.width)
+	if rect.Width != 90 {
+		t.Errorf("expected width=90, got %f", rect.Width)
 	}
-	if rect.height != 40 {
-		t.Errorf("expected height=40, got %f", rect.height)
+	if rect.Height != 40 {
+		t.Errorf("expected height=40, got %f", rect.Height)
 	}
 }

@@ -1,3 +1,4 @@
+// Package pdf provides low-level PDF parsing and manipulation functionality.
 package pdf
 
 import (

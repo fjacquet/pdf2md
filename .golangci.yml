@@ -1,23 +1,27 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
 
 linters:
+  default: none
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
     - unused
     - gocritic
     - revive
-    - gofumpt
     - gosec
     - misspell
     - unconvert
     - unparam
+
+formatters:
+  enable:
+    - gofumpt
 
 linters-settings:
   gofumpt:

@@ -15,7 +15,7 @@ func TestReader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open PDF: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if r.Root == nil {
 		t.Fatal("Root dictionary is nil")
@@ -108,9 +108,7 @@ func TestReader(t *testing.T) {
 	page75, err := r.GetPage(75)
 	if err != nil {
 		t.Errorf("Failed to get page 75: %v", err)
-	} else {
-		if page75[Name("Type")] != Name("Page") {
-			t.Errorf("Expected /Type /Page for page 75, got %v", page75[Name("Type")])
-		}
+	} else if page75[Name("Type")] != Name("Page") {
+		t.Errorf("Expected /Type /Page for page 75, got %v", page75[Name("Type")])
 	}
 }

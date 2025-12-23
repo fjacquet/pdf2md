@@ -21,7 +21,7 @@ func (a *Analyzer) NormalizeHeaderLevels(elements []Element) []Element {
 	shift := minLevel - 1
 	for i := range elements {
 		if elements[i].Type == ElementTypeHeader {
-			elements[i].Level = elements[i].Level - shift
+			elements[i].Level -= shift
 			if elements[i].Level < 1 {
 				elements[i].Level = 1
 			}

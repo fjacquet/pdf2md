@@ -10,19 +10,19 @@ import (
 
 // Line represents a detected line (horizontal or vertical)
 type Line struct {
-	X1, Y1 float64
-	X2, Y2 float64
-	Length float64
+	X1, Y1       float64
+	X2, Y2       float64
+	Length       float64
 	IsHorizontal bool
 	IsVertical   bool
 }
 
-// gridRegion represents a region bounded by grid lines
-type gridRegion struct {
-	x, y          float64
-	width, height float64
-	horizontalLines []float64 // Y positions of horizontal lines
-	verticalLines   []float64 // X positions of vertical lines
+// GridRegion represents a region bounded by grid lines
+type GridRegion struct {
+	X, Y            float64
+	Width, Height   float64
+	HorizontalLines []float64 // Y positions of horizontal lines
+	VerticalLines   []float64 // X positions of vertical lines
 }
 
 // classifyLines extracts horizontal and vertical lines from vector graphics
@@ -118,7 +118,7 @@ func classifyLine(x1, y1, x2, y2 float64, angleThreshold, minLength float64) *Li
 }
 
 // findGridRegions finds rectangular regions defined by intersecting lines
-func findGridRegions(hLines, vLines []Line) []gridRegion {
+func findGridRegions(hLines, vLines []Line) []GridRegion {
 	if len(hLines) < 2 || len(vLines) < 2 {
 		return nil
 	}
@@ -137,16 +137,16 @@ func findGridRegions(hLines, vLines []Line) []gridRegion {
 
 	// Find the largest continuous grid
 	// For simplicity, we take all positions as one grid region
-	region := gridRegion{
-		x:               vPositions[0],
-		y:               hPositions[0],
-		width:           vPositions[len(vPositions)-1] - vPositions[0],
-		height:          hPositions[len(hPositions)-1] - hPositions[0],
-		horizontalLines: hPositions,
-		verticalLines:   vPositions,
+	region := GridRegion{
+		X:               vPositions[0],
+		Y:               hPositions[0],
+		Width:           vPositions[len(vPositions)-1] - vPositions[0],
+		Height:          hPositions[len(hPositions)-1] - hPositions[0],
+		HorizontalLines: hPositions,
+		VerticalLines:   vPositions,
 	}
 
-	return []gridRegion{region}
+	return []GridRegion{region}
 }
 
 // clusterLinePositions groups lines by their position and returns unique positions
@@ -186,7 +186,7 @@ func clusterLinePositions(lines []Line, useY bool) []float64 {
 }
 
 // isBlockInRegion checks if a text block is within a grid region
-func isBlockInRegion(block extractor.TextBlock, region gridRegion) bool {
+func isBlockInRegion(block extractor.TextBlock, region GridRegion) bool {
 	// Block center point
 	cx := block.X + block.Width/2
 	cy := block.Y + block.Height/2
@@ -194,10 +194,10 @@ func isBlockInRegion(block extractor.TextBlock, region gridRegion) bool {
 	// Add tolerance
 	const tolerance = 5.0
 
-	return cx >= region.x-tolerance &&
-		cx <= region.x+region.width+tolerance &&
-		cy >= region.y-tolerance &&
-		cy <= region.y+region.height+tolerance
+	return cx >= region.X-tolerance &&
+		cx <= region.X+region.Width+tolerance &&
+		cy >= region.Y-tolerance &&
+		cy <= region.Y+region.Height+tolerance
 }
 
 // DetectTableFromGraphics attempts to detect a table structure from graphics and text blocks
@@ -352,8 +352,8 @@ func DetectVerticalSeparators(graphics []types.VectorGraphic, pageHeight float64
 
 // MergeRectanglesIntoCells detects rectangles (from graphics fill operations)
 // and uses them as cell boundaries
-func MergeRectanglesIntoCells(graphics []types.VectorGraphic) []gridRegion {
-	var regions []gridRegion
+func MergeRectanglesIntoCells(graphics []types.VectorGraphic) []GridRegion {
+	var regions []GridRegion
 
 	for _, g := range graphics {
 		// Look for filled rectangles
@@ -377,7 +377,7 @@ func MergeRectanglesIntoCells(graphics []types.VectorGraphic) []gridRegion {
 }
 
 // extractRectangle extracts rectangle bounds from path operations
-func extractRectangle(ops []types.PathOperation) *gridRegion {
+func extractRectangle(ops []types.PathOperation) *GridRegion {
 	if len(ops) < 4 {
 		return nil
 	}
@@ -430,10 +430,10 @@ func extractRectangle(ops []types.PathOperation) *gridRegion {
 		}
 	}
 
-	return &gridRegion{
-		x:      minX,
-		y:      minY,
-		width:  maxX - minX,
-		height: maxY - minY,
+	return &GridRegion{
+		X:      minX,
+		Y:      minY,
+		Width:  maxX - minX,
+		Height: maxY - minY,
 	}
 }
