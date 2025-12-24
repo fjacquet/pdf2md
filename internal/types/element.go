@@ -12,6 +12,10 @@ type Element struct {
 	Height   float64
 	FontSize float64
 	LinkURI  string
+
+	// ONNX detection metadata (set when ONNX detection is used)
+	ONNXClassID    int     // Class ID from ONNX model (0 if not detected)
+	ONNXConfidence float64 // Detection confidence (0.0-1.0)
 }
 
 // ElementType defines the type of a document element
@@ -19,6 +23,7 @@ type ElementType string
 
 // Element type constants for document elements.
 const (
+	ElementTypeUnknown    ElementType = ""
 	ElementTypeHeader     ElementType = "header"
 	ElementTypeParagraph  ElementType = "paragraph"
 	ElementTypeCodeBlock  ElementType = "code_block"
@@ -26,4 +31,8 @@ const (
 	ElementTypeTable      ElementType = "table"
 	ElementTypeAdmonition ElementType = "admonition"
 	ElementTypeImage      ElementType = "image"
+	ElementTypeEquation   ElementType = "equation"
+	ElementTypeFigure     ElementType = "figure"
+	ElementTypeCaption    ElementType = "caption"
+	ElementTypeFootnote   ElementType = "footnote"
 )

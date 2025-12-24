@@ -49,6 +49,12 @@ make run-test
 ./pdf2md --debug input.pdf            # Enable debug logging
 ./pdf2md --exclude-top=50 input.pdf   # Exclude header region
 ./pdf2md --exclude-bottom=30 input.pdf # Exclude footer region
+
+# ONNX Layout Detection (ML-enhanced)
+./pdf2md input.pdf output.md          # ONNX enabled by default if model available
+./pdf2md --no-onnx input.pdf          # Disable ONNX, use rule-based only
+./pdf2md --model-path=/path/model.onnx input.pdf  # Custom model path
+./pdf2md --runtime-path=/path/libonnxruntime.so input.pdf  # Custom runtime
 ```
 
 ## Architecture
@@ -79,10 +85,29 @@ Custom pure Go PDF parser that handles:
 - **Reading order** - `sorter.go` sorts blocks by column then Y position (top-to-bottom)
 - **Header detection** - Uses font size ratios (default 1.2x body text)
 - **Element classification** - Rule-based system in `analyzer.go` for headers, code blocks, lists, tables, admonitions
+- **ONNX integration** - `analyzer_onnx.go` fuses ML detections with rule-based analysis
 - **TOC detection** - `analyzer_toc.go` identifies and removes table of contents
 - **Math/formula handling** - `formulas.go` for LaTeX-style math expressions
 - **Link merging** - `links.go` and `analyzer_merge_links.go` for hyperlinks
 - **Exclusion zones** - Configurable top/bottom regions to skip (headers/footers)
+
+### 3b. ONNX Layout Detection (`internal/onnx/`)
+
+ML-based layout detection using DocLayout-YOLO model:
+
+- **detector.go** - `Detector` interface and onnxruntime-purego implementation
+- **preprocessing.go** - Image preparation: letterbox resize, normalize, BCHW tensor
+- **postprocessing.go** - NMS, confidence filtering, box scaling to page coordinates
+- **model.go** - Auto-download model from Hugging Face if not present
+- **classes.go** - Mapping DocLayout classes to ElementType
+
+### 3c. PDF Rendering (`internal/render/`)
+
+PDF to image rendering for ONNX input:
+
+- **renderer.go** - `PageRenderer` interface and configuration
+- **renderer_pdfium.go** - go-pdfium WebAssembly/Wazero implementation
+- Cross-platform: WebAssembly runtime, no native dependencies
 
 ### 4. Markdown Generation (`internal/markdown/`)
 
@@ -96,6 +121,10 @@ Custom pure Go PDF parser that handles:
 - `Image` - Extracted image with binary data and format
 - `Link` - Hyperlink with URI and bounding rectangle
 - `Graphics` - Vector graphics data (`graphics.go`)
+- `Element` - Layout element with Type, ONNX metadata (`element.go`)
+- `BoundingBox` - ONNX detection box with confidence and class (`detection.go`)
+- `PageDetections` - All ONNX detections for a page (`detection.go`)
+- `DocLayoutClass` - Enum for DocLayout-YOLO classes (title, table, figure, etc.)
 
 ## Key Design Decisions
 
@@ -103,6 +132,8 @@ Custom pure Go PDF parser that handles:
 2. **Pluggable extractors** - Interface design allows future upgrades without rewriting analyzers
 3. **Coordinate-based analysis** - Uses X/Y positions rather than PDF structure hints
 4. **Rule-based classification** - Extensible system for element type detection
+5. **ONNX Hybrid** - ML detection fused with rule-based for best accuracy, graceful fallback
+6. **WebAssembly PDF rendering** - go-pdfium with Wazero for cross-platform compatibility
 
 ## Technical Notes
 
@@ -111,6 +142,53 @@ Custom pure Go PDF parser that handles:
 - **Font size is in points** - 1 point = 1/72 inch
 - **Column detection threshold** - Default 10.0 pixels (`ColumnGapThreshold`)
 - **Header detection ratio** - Default 1.2x body font size (`HeaderSizeRatio`)
+
+### ONNX Technical Notes
+
+- **Model**: DocLayout-YOLO from `wybxc/DocLayout-YOLO-DocStructBench-onnx` (Apache 2.0)
+- **Input size**: 1024x1024 pixels with letterbox padding
+- **Confidence threshold**: 0.25 for detection, 0.5 for override
+- **NMS threshold**: 0.45 IoU for overlapping boxes
+- **Runtime**: Requires `libonnxruntime` native library (auto-detected or via `--runtime-path`)
+- **Model auto-download**: Stored in `~/.pdf2md/models/` or `PDF2MD_MODEL_PATH` env var
+- **Fallback**: Graceful degradation to rule-based if ONNX unavailable
+
+### Hardware Acceleration
+
+ONNX Runtime supports hardware acceleration on various platforms:
+
+**macOS (CoreML)**:
+- Automatically attempted on macOS (M1/M2/M3/Intel) when available
+- Leverages Apple Neural Engine (ANE) on Apple Silicon for fastest inference
+- Falls back to CPU if CoreML unavailable (e.g., Homebrew build)
+- Enabled by default via `Config.UseCoreML = true`
+- **Note**: Homebrew's onnxruntime is built without CoreML; for CoreML, use official releases from Microsoft
+
+**Installation**:
+```bash
+# macOS (Homebrew) - CPU only, no CoreML
+brew install onnxruntime
+
+# macOS with CoreML - download from Microsoft releases
+# https://github.com/microsoft/onnxruntime/releases
+# Look for: onnxruntime-osx-arm64-*.tgz (Apple Silicon)
+# or: onnxruntime-osx-x64-*.tgz (Intel)
+
+# Linux (Ubuntu/Debian)
+apt install libonnxruntime-dev
+
+# Custom path
+export ORT_LIB_PATH=/path/to/libonnxruntime.dylib
+```
+
+**Environment Variables**:
+- `PDF2MD_MODEL_PATH` - Custom path to ONNX model file
+- `ORT_LIB_PATH` - Custom path to ONNX Runtime library
+
+**Execution Provider Priority**:
+1. CoreML (macOS with Apple Silicon/Intel GPU)
+2. CUDA (NVIDIA GPUs, if compiled with CUDA support)
+3. CPU (fallback, always available)
 
 ## Testing
 
@@ -144,12 +222,16 @@ md := builder.Build(allElements)
 
 ## Element Types
 
-The analyzer classifies blocks into these element types (defined in `internal/layout/analyzer.go`):
+The analyzer classifies blocks into these element types (defined in `internal/types/element.go`):
 
 - `ElementTypeHeader` - H1-H6 headers (detected by font size ratio or numbering patterns)
 - `ElementTypeParagraph` - Regular text paragraphs
 - `ElementTypeCodeBlock` - Code blocks (detected by monospace fonts or content patterns)
 - `ElementTypeList` - Bulleted or numbered lists
-- `ElementTypeTable` - Table structures
+- `ElementTypeTable` - Table structures (enhanced by ONNX detection)
 - `ElementTypeAdmonition` - NOTE, WARNING, TIP, etc. callouts
 - `ElementTypeImage` - Extracted images
+- `ElementTypeFigure` - Figures detected by ONNX
+- `ElementTypeCaption` - Figure/table captions detected by ONNX
+- `ElementTypeEquation` - Mathematical formulas detected by ONNX
+- `ElementTypeFootnote` - Table footnotes detected by ONNX
