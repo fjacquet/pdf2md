@@ -54,7 +54,7 @@ func (a *Analyzer) MergeDropCaps(elements []Element) []Element {
 				current.Content = content + nextContent
 				current.Width = next.X + next.Width - current.X
 				current.FontSize = next.FontSize // Use the body text font size
-				i++ // Skip next element
+				i++                              // Skip next element
 			}
 		}
 
@@ -107,13 +107,14 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 					strings.TrimSpace(current.Content) == "▪" ||
 					strings.TrimSpace(current.Content) == "◦"
 
-				if isBullet {
+				switch {
+				case isBullet:
 					// Bullet should always merge with following text
 					current = a.mergeElementsWithLinks(current, next, " ")
-				} else if len(current.Content) > 40 || len(next.Content) > 40 {
+				case len(current.Content) > 40 || len(next.Content) > 40:
 					merged = append(merged, current)
 					current = next
-				} else {
+				default:
 					isEqNum := a.isStartOfEqNum(next, elements[i+1:])
 
 					switch {

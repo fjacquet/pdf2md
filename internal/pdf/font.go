@@ -492,27 +492,23 @@ func (f *Font) DecodeString(s string) string {
 					i += 2 // Skip 2-byte code we can't decode
 				}
 				continue
-			} else {
-				// 1 byte
-				code = int(data[i])
-				if val, ok := f.ToUnicode[code]; ok {
-					res.WriteString(val)
-				} else {
-					// Fallback: use Encoding if available
-					if name, ok := f.Encoding[code]; ok {
-						if uni, ok := GlyphToUnicode[name]; ok {
-							res.WriteString(uni)
-						} else {
-							// Unknown glyph name
-							res.WriteByte(data[i])
-						}
-					} else {
-						// Fallback: assume ASCII/Latin1
-						res.WriteByte(data[i])
-					}
-				}
-				i++
 			}
+			// 1 byte
+			code = int(data[i])
+			if val, ok := f.ToUnicode[code]; ok {
+				res.WriteString(val)
+			} else if name, ok := f.Encoding[code]; ok {
+				if uni, ok := GlyphToUnicode[name]; ok {
+					res.WriteString(uni)
+				} else {
+					// Unknown glyph name
+					res.WriteByte(data[i])
+				}
+			} else {
+				// Fallback: assume ASCII/Latin1
+				res.WriteByte(data[i])
+			}
+			i++
 		}
 		return res.String()
 	}
@@ -638,7 +634,7 @@ func (f *Font) parseToUnicodeCMap(data []byte) {
 					if len(uniBase) == 1 {
 						base := int(uniBase[0])
 						for c := start; c <= end; c++ {
-							f.ToUnicode[c] = string(rune(base + (c - start)))
+							f.ToUnicode[c] = string(rune(base + (c - start))) //nolint:gosec // CMap codepoint within Unicode range
 						}
 					}
 				} else if uniTok.Type == TokenArrayStart {

@@ -64,7 +64,7 @@ func (a *Analyzer) CleanMathSymbols(elements []Element) []Element {
 					sb.WriteString("$")
 				}
 			}
-			elements[i].Content = sb.String()
+			elements[i].Content = sb.String() //nolint:gosec // G602 false positive: i is from `for i := range elements`
 		}
 	}
 	return elements

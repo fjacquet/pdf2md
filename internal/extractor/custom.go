@@ -83,8 +83,14 @@ func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) (*PageContent, error)
 		fmt.Printf("Warning: failed to extract links: %v\n", err)
 	}
 
+	width, height := e.readPageDimensions(pageDict)
+
 	if content == nil {
-		return &PageContent{Links: links}, nil
+		return &PageContent{
+			Links:      links,
+			PageWidth:  width,
+			PageHeight: height,
+		}, nil
 	}
 
 	// Process content
@@ -92,29 +98,6 @@ func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) (*PageContent, error)
 	textBlocks, images, graphics, err := interpreter.Process(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process content: %w", err)
-	}
-
-	// Get MediaBox for dimensions
-	width, height := 0.0, 0.0
-	if mediaBoxObj, ok := pageDict[pdf.Name("MediaBox")]; ok {
-		// Resolve if indirect
-		if ref, ok := mediaBoxObj.(pdf.IndirectRef); ok {
-			obj, err := e.reader.ReadObject(ref.ObjectNumber)
-			if err == nil {
-				mediaBoxObj = obj
-			}
-		}
-
-		if arr, ok := mediaBoxObj.(pdf.Array); ok && len(arr) == 4 {
-			// [x1, y1, x2, y2]
-			// Width = abs(x2-x1), Height = abs(y2-y1)
-			x1 := toFloat(arr[0])
-			y1 := toFloat(arr[1])
-			x2 := toFloat(arr[2])
-			y2 := toFloat(arr[3])
-			width = abs(x2 - x1)
-			height = abs(y2 - y1)
-		}
 	}
 
 	return &PageContent{
@@ -125,6 +108,33 @@ func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) (*PageContent, error)
 		PageWidth:  width,
 		PageHeight: height,
 	}, nil
+}
+
+// readPageDimensions resolves the page's MediaBox and returns its width/height.
+// Returns (0, 0) if MediaBox is missing or malformed.
+func (e *CustomExtractor) readPageDimensions(pageDict pdf.Dictionary) (float64, float64) {
+	mediaBoxObj, ok := pageDict[pdf.Name("MediaBox")]
+	if !ok {
+		return 0, 0
+	}
+
+	if ref, ok := mediaBoxObj.(pdf.IndirectRef); ok {
+		obj, err := e.reader.ReadObject(ref.ObjectNumber)
+		if err == nil {
+			mediaBoxObj = obj
+		}
+	}
+
+	arr, ok := mediaBoxObj.(pdf.Array)
+	if !ok || len(arr) != 4 {
+		return 0, 0
+	}
+
+	x1 := toFloat(arr[0])
+	y1 := toFloat(arr[1])
+	x2 := toFloat(arr[2])
+	y2 := toFloat(arr[3])
+	return abs(x2 - x1), abs(y2 - y1)
 }
 
 func toFloat(obj pdf.Object) float64 {

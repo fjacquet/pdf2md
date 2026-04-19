@@ -23,6 +23,10 @@ type Reader struct {
 	Trailer   Dictionary
 	XrefTable map[int]XrefEntry
 	Root      Dictionary
+	// Security is non-nil when the document is encrypted AND we successfully
+	// opened it with the empty user password. All strings and stream data
+	// read through ReadObject are decrypted before being returned.
+	Security *SecurityHandler
 }
 
 // NewReader creates a new PDF reader
@@ -143,7 +147,53 @@ func (r *Reader) readTrailer() error {
 		}
 	}
 
+	if err := r.initSecurity(); err != nil {
+		return err
+	}
 	return r.extractRoot()
+}
+
+// initSecurity inspects the trailer for /Encrypt and builds a SecurityHandler
+// using the empty user password. A missing /Encrypt entry is a no-op.
+func (r *Reader) initSecurity() error {
+	encryptRef, ok := r.Trailer[Name("Encrypt")]
+	if !ok {
+		return nil
+	}
+
+	// Resolve the Encrypt dictionary. It is almost always an indirect ref,
+	// but spec allows a direct dictionary too.
+	var encryptDict Dictionary
+	switch e := encryptRef.(type) {
+	case Dictionary:
+		encryptDict = e
+	case IndirectRef:
+		// Read without decryption (Security is still nil here).
+		obj, err := r.ReadObject(e.ObjectNumber)
+		if err != nil {
+			return fmt.Errorf("failed to read /Encrypt object %d: %w", e.ObjectNumber, err)
+		}
+		d, ok := obj.(Dictionary)
+		if !ok {
+			return fmt.Errorf("/Encrypt is not a dictionary: %T", obj)
+		}
+		encryptDict = d
+	default:
+		return fmt.Errorf("/Encrypt has unexpected type %T", encryptRef)
+	}
+
+	// /ID is a two-element array of byte strings in the trailer. Use element 0.
+	var docID []byte
+	if idArr, ok := r.Trailer[Name("ID")].(Array); ok && len(idArr) > 0 {
+		docID, _ = stringBytes(idArr[0])
+	}
+
+	handler, err := NewSecurityHandler(encryptDict, docID)
+	if err != nil {
+		return err
+	}
+	r.Security = handler
+	return nil
 }
 
 // readXref reads the XRef table/stream at the given offset and returns the trailer dictionary
@@ -478,7 +528,7 @@ func (r *Reader) ReadObject(objNum int) (Object, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read object gen: %w", err)
 	}
-	// Gen num - ignore for now
+	genNum, _ := toInt(tok)
 
 	tok, err = t.NextToken()
 	if err != nil {
@@ -504,7 +554,85 @@ func (r *Reader) ReadObject(objNum int) (Object, error) {
 		return nil, fmt.Errorf("expected 'endobj', got %v", tok)
 	}
 
+	if r.Security != nil {
+		obj, err = r.decryptObject(obj, objNum, genNum)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return obj, nil
+}
+
+// decryptObject recursively descends an object tree, decrypting every
+// String (literal or hex) and the Data of every Stream with a per-object
+// key derived from (objNum, genNum). The original tree is left unchanged.
+//
+// Compressed objects read via /ObjStm do not pass through here — they inherit
+// the decryption of their container stream and are parsed from plaintext
+// bytes in parseObjStm.
+func (r *Reader) decryptObject(obj Object, objNum, genNum int) (Object, error) {
+	if r.Security == nil {
+		return obj, nil
+	}
+	switch v := obj.(type) {
+	case StringLiteral:
+		plain, err := r.Security.DecryptString([]byte(v), objNum, genNum)
+		if err != nil {
+			return nil, err
+		}
+		return StringLiteral(plain), nil
+	case HexString:
+		plain, err := r.Security.DecryptString([]byte(v), objNum, genNum)
+		if err != nil {
+			return nil, err
+		}
+		return HexString(plain), nil
+	case Array:
+		out := make(Array, len(v))
+		for i, elem := range v {
+			decrypted, err := r.decryptObject(elem, objNum, genNum)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = decrypted
+		}
+		return out, nil
+	case Dictionary:
+		out := make(Dictionary, len(v))
+		for k, val := range v {
+			decrypted, err := r.decryptObject(val, objNum, genNum)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = decrypted
+		}
+		return out, nil
+	case Stream:
+		// First decrypt the dictionary (may contain strings).
+		newDict, err := r.decryptObject(v.Dictionary, objNum, genNum)
+		if err != nil {
+			return nil, err
+		}
+		dict, _ := newDict.(Dictionary)
+		// Metadata streams are exempt when /EncryptMetadata is false.
+		if !r.Security.EncryptMeta && isMetadataStream(dict) {
+			return Stream{Dictionary: dict, Data: v.Data}, nil
+		}
+		plain, err := r.Security.DecryptStream(v.Data, objNum, genNum)
+		if err != nil {
+			return nil, err
+		}
+		return Stream{Dictionary: dict, Data: plain}, nil
+	default:
+		return obj, nil
+	}
+}
+
+// isMetadataStream reports whether a stream dictionary has /Type /Metadata.
+func isMetadataStream(d Dictionary) bool {
+	t, _ := d[Name("Type")].(Name)
+	return t == "Metadata"
 }
 
 func (r *Reader) readCompressedObject(streamObjNum, index int) (Object, error) {

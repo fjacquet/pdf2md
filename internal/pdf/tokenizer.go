@@ -229,7 +229,7 @@ func (t *Tokenizer) readString() (Token, error) {
 						break
 					}
 				}
-				buf.WriteByte(byte(code))
+				buf.WriteByte(byte(code)) //nolint:gosec // PDF octal escape: code is always 0-511 (3 octal digits max)
 			} else {
 				switch ch {
 				case 'n':

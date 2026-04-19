@@ -166,19 +166,9 @@ func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
 }
 
 func (in *Interpreter) extractImage(name Name, stream *Stream) error {
-	// Check if it's already JPEG (DCTDecode) - these can be saved directly
-	filter := stream.Dictionary[Name("Filter")]
-	isJPEG := false
-	if f, ok := filter.(Name); ok && f == "DCTDecode" {
-		isJPEG = true
-	} else if arr, ok := filter.(Array); ok {
-		for _, f := range arr {
-			if fn, ok := f.(Name); ok && fn == "DCTDecode" {
-				isJPEG = true
-				break
-			}
-		}
-	}
+	// Check if it's already JPEG (DCTDecode) or JPEG2000 (JPXDecode) — both
+	// are compressed image file formats that downstream embeds verbatim.
+	isJPEG, isJP2 := detectCompressedImageFormat(stream.Dictionary[Name("Filter")])
 
 	// Decode the stream data
 	data, err := DecodeStreamFromDict(stream.Data, stream.Dictionary)
@@ -191,12 +181,15 @@ func (in *Interpreter) extractImage(name Name, stream *Stream) error {
 	ctmWidth := in.State.CTM[0]
 	ctmHeight := in.State.CTM[3]
 
-	if isJPEG {
-		// JPEG data is already properly encoded
+	if isJPEG || isJP2 {
+		format := "jpeg"
+		if isJP2 {
+			format = "jp2"
+		}
 		in.Images = append(in.Images, types.Image{
 			ID:     string(name),
 			Data:   data,
-			Format: "jpeg",
+			Format: format,
 			X:      x,
 			Y:      y,
 			Width:  ctmWidth,
@@ -246,6 +239,33 @@ func (in *Interpreter) extractImage(name Name, stream *Stream) error {
 	})
 
 	return nil
+}
+
+// detectCompressedImageFormat inspects the /Filter entry (Name or Array) of
+// an image XObject and reports whether the raw stream is already a JPEG
+// (DCTDecode) or JPEG2000 (JPXDecode) file. Such streams are passed through
+// verbatim by the filter dispatch; downstream embeds them with the matching
+// format tag.
+func detectCompressedImageFormat(filter Object) (isJPEG, isJP2 bool) {
+	classify := func(n Name) {
+		switch n {
+		case "DCTDecode":
+			isJPEG = true
+		case "JPXDecode":
+			isJP2 = true
+		}
+	}
+	switch f := filter.(type) {
+	case Name:
+		classify(f)
+	case Array:
+		for _, elem := range f {
+			if n, ok := elem.(Name); ok {
+				classify(n)
+			}
+		}
+	}
+	return isJPEG, isJP2
 }
 
 // getImageInt gets an integer value from image dictionary

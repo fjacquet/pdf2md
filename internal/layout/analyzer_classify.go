@@ -28,10 +28,7 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 	if element.FontSize > bodyFontSize*a.HeaderSizeRatio {
 		// Check if this looks like a header or just mid-sentence large text
 		// Headers MUST start with uppercase, digit, or CHAPTER/section keywords
-		cleanText := strings.TrimSpace(text)
-		if strings.HasPrefix(cleanText, "**") {
-			cleanText = strings.TrimPrefix(cleanText, "**")
-		}
+		cleanText := strings.TrimPrefix(strings.TrimSpace(text), "**")
 
 		// Find the first actual character (skip whitespace)
 		firstChar := rune(0)

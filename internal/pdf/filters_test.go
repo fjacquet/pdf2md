@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
@@ -215,5 +216,110 @@ func TestDecodeStream_Integration(t *testing.T) {
 				t.Errorf("got %q, want %q", result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestDecodeRunLength(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []byte
+		expected []byte
+		wantErr  bool
+	}{
+		{
+			name:     "literal run of 5 bytes",
+			input:    []byte{0x04, 'H', 'e', 'l', 'l', 'o', 0x80},
+			expected: []byte("Hello"),
+		},
+		{
+			name:     "repeat run of 0x41 five times",
+			input:    []byte{0xFC, 0x41, 0x80},
+			expected: []byte{0x41, 0x41, 0x41, 0x41, 0x41},
+		},
+		{
+			name:     "mixed literal + repeat",
+			input:    []byte{0x02, 'A', 'B', 'C', 0xFE, 'Z', 0x80},
+			expected: []byte{'A', 'B', 'C', 'Z', 'Z', 'Z'},
+		},
+		{
+			name:     "empty with EOD",
+			input:    []byte{0x80},
+			expected: []byte{},
+		},
+		{
+			name:     "no EOD (lenient)",
+			input:    []byte{0x01, 'X', 'Y'},
+			expected: []byte{'X', 'Y'},
+		},
+		{
+			name:    "truncated literal run",
+			input:   []byte{0x05, 'A', 'B'},
+			wantErr: true,
+		},
+		{
+			name:    "truncated repeat run",
+			input:   []byte{0xFE},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := decodeRunLength(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !bytes.Equal(got, tt.expected) {
+				t.Errorf("got %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDecodeStream_JPXPassthrough(t *testing.T) {
+	jp2Magic := []byte{0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20, 0x0D, 0x0A, 0x87, 0x0A}
+	out, err := DecodeStream(jp2Magic, "JPXDecode", nil)
+	if err != nil {
+		t.Fatalf("JPXDecode passthrough errored: %v", err)
+	}
+	if !bytes.Equal(out, jp2Magic) {
+		t.Errorf("JPXDecode changed bytes: got %x", out)
+	}
+}
+
+func TestDecodeStream_JBIG2Unsupported(t *testing.T) {
+	_, err := DecodeStream([]byte{0x00}, "JBIG2Decode", nil)
+	if err == nil {
+		t.Fatal("expected error for JBIG2Decode, got nil")
+	}
+	if !errors.Is(err, ErrFilterUnsupported) {
+		t.Errorf("expected ErrFilterUnsupported, got %v", err)
+	}
+}
+
+func TestDecodeStream_CCITTFaxUnsupported(t *testing.T) {
+	// Stub path for now; once G4 decoder lands, swap for a real G4 sample.
+	_, err := DecodeStream([]byte{0x00}, "CCITTFaxDecode", nil)
+	if err == nil {
+		t.Fatal("expected error for CCITTFaxDecode stub, got nil")
+	}
+	if !errors.Is(err, ErrFilterUnsupported) {
+		t.Errorf("expected ErrFilterUnsupported, got %v", err)
+	}
+}
+
+func TestDecodeStream_CryptIdentity(t *testing.T) {
+	raw := []byte("plaintext when security handler inactive")
+	out, err := DecodeStream(raw, "Crypt", nil)
+	if err != nil {
+		t.Fatalf("Crypt identity errored: %v", err)
+	}
+	if !bytes.Equal(out, raw) {
+		t.Errorf("Crypt changed bytes: got %q", out)
 	}
 }
