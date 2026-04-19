@@ -19,34 +19,34 @@ func createTestImage(width, height int, c color.Color) image.Image {
 
 func TestLetterboxScale(t *testing.T) {
 	tests := []struct {
-		name                  string
-		origW, origH          int
-		targetW, targetH      int
-		wantScale             float64
-		wantNewW, wantNewH    int
+		name               string
+		origW, origH       int
+		targetW, targetH   int
+		wantScale          float64
+		wantNewW, wantNewH int
 	}{
 		{
-			name:      "square_to_square",
-			origW:     100, origH: 100,
-			targetW:   200, targetH: 200,
+			name:  "square_to_square",
+			origW: 100, origH: 100,
+			targetW: 200, targetH: 200,
 			wantScale: 2.0, wantNewW: 200, wantNewH: 200,
 		},
 		{
-			name:      "wide_to_square",
-			origW:     200, origH: 100,
-			targetW:   200, targetH: 200,
+			name:  "wide_to_square",
+			origW: 200, origH: 100,
+			targetW: 200, targetH: 200,
 			wantScale: 1.0, wantNewW: 200, wantNewH: 100,
 		},
 		{
-			name:      "tall_to_square",
-			origW:     100, origH: 200,
-			targetW:   200, targetH: 200,
+			name:  "tall_to_square",
+			origW: 100, origH: 200,
+			targetW: 200, targetH: 200,
 			wantScale: 1.0, wantNewW: 100, wantNewH: 200,
 		},
 		{
-			name:      "downscale",
-			origW:     1000, origH: 800,
-			targetW:   500, targetH: 500,
+			name:  "downscale",
+			origW: 1000, origH: 800,
+			targetW: 500, targetH: 500,
 			wantScale: 0.5, wantNewW: 500, wantNewH: 400,
 		},
 	}
@@ -105,9 +105,9 @@ func TestPadImage(t *testing.T) {
 func TestImageToTensor(t *testing.T) {
 	// Create a 2x2 test image with known colors
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
-	img.Set(0, 0, color.RGBA{R: 255, G: 0, B: 0, A: 255})   // Red
-	img.Set(1, 0, color.RGBA{R: 0, G: 255, B: 0, A: 255})   // Green
-	img.Set(0, 1, color.RGBA{R: 0, G: 0, B: 255, A: 255})   // Blue
+	img.Set(0, 0, color.RGBA{R: 255, G: 0, B: 0, A: 255})     // Red
+	img.Set(1, 0, color.RGBA{R: 0, G: 255, B: 0, A: 255})     // Green
+	img.Set(0, 1, color.RGBA{R: 0, G: 0, B: 255, A: 255})     // Blue
 	img.Set(1, 1, color.RGBA{R: 255, G: 255, B: 255, A: 255}) // White
 
 	tensor := ImageToTensor(img)

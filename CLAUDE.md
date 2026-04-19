@@ -55,6 +55,13 @@ make run-test
 ./pdf2md --no-onnx input.pdf          # Disable ONNX, use rule-based only
 ./pdf2md --model-path=/path/model.onnx input.pdf  # Custom model path
 ./pdf2md --runtime-path=/path/libonnxruntime.so input.pdf  # Custom runtime
+
+# OCR fallback (scanned / image-only pages)
+./pdf2md input.pdf                            # OCR auto-used if models present in ~/.pdf2md/models/ocr/
+./pdf2md --no-ocr input.pdf                   # Disable OCR fallback entirely
+./pdf2md --ocr-det-model-path=/det.onnx input.pdf
+./pdf2md --ocr-rec-model-path=/rec.onnx input.pdf
+./pdf2md --ocr-dict-path=/dict.txt input.pdf  # Required only if model uses a non-Latin dict
 ```
 
 ## Architecture
@@ -109,6 +116,26 @@ PDF to image rendering for ONNX input:
 - **renderer_pdfium.go** - go-pdfium WebAssembly/Wazero implementation
 - Cross-platform: WebAssembly runtime, no native dependencies
 
+### 3d. OCR (`internal/ocr/`)
+
+ONNX-based OCR fallback for scanned / image-only pages. Pipeline mirrors
+`internal/onnx/`: pure preprocessing/postprocessing + stateful `PaddleRecognizer`
+that owns the ONNX sessions, dependency injection via `Deps` for testability.
+
+- **recognizer.go** - `Recognizer` interface, `Config`, `Deps` (DI)
+- **paddle.go** - `PaddleRecognizer` orchestrating det + rec ONNX sessions
+- **detection.go** - DB text-detection pre/postprocessing (pure functions,
+  connected-components labelling)
+- **recognition.go** - CRNN recognition preprocessing: crop + resize to 48×N
+  + normalize to [-1, 1]
+- **ctc.go** - Greedy CTC decode (pure function)
+- **model.go** - Path resolution (no auto-download: users install once,
+  see `docs/ocr-setup.md`)
+- **dict.go** - Embedded Latin character dictionary (FR/EN/DE + more)
+
+Shared cache primitives live in `internal/modelcache/` (used by both
+`internal/onnx/` and `internal/ocr/`).
+
 ### 4. Markdown Generation (`internal/markdown/`)
 
 - `builder.go` - Converts `Element` arrays to Markdown text
@@ -153,6 +180,20 @@ PDF to image rendering for ONNX input:
 - **Model auto-download**: Stored in `~/.pdf2md/models/` or `PDF2MD_MODEL_PATH` env var
 - **Fallback**: Graceful degradation to rule-based if ONNX unavailable
 
+### OCR Technical Notes
+
+- **Models**: PaddleOCR PP-OCRv5 mobile (det + rec), Apache 2.0
+- **No auto-download**: user installs once at `~/.pdf2md/models/ocr/{det,rec}.onnx`
+  (see `docs/ocr-setup.md`). Stable community ONNX mirrors do not exist.
+- **Languages**: Latin scripts (FR/EN/DE + Spanish, Italian, Nordic, etc.)
+  via the embedded `latin_dict.txt`
+- **Detection**: DB (Differentiable Binarization), short-side resize to 960,
+  connected-components postprocessing
+- **Recognition**: CRNN + CTC greedy decode, fixed input height 48, max width 320
+- **Runs only on image-only pages**: zero cost when the PDF has extractable text
+- **Fallback**: if models are missing, the recognizer stays unavailable and
+  scanned pages pass through untouched (no error)
+
 ### Hardware Acceleration
 
 ONNX Runtime supports hardware acceleration on various platforms:
@@ -182,7 +223,10 @@ export ORT_LIB_PATH=/path/to/libonnxruntime.dylib
 ```
 
 **Environment Variables**:
-- `PDF2MD_MODEL_PATH` - Custom path to ONNX model file
+- `PDF2MD_MODEL_PATH` - Custom path to ONNX layout model file
+- `PDF2MD_OCR_DET_PATH` - Custom path to OCR text-detection ONNX model
+- `PDF2MD_OCR_REC_PATH` - Custom path to OCR text-recognition ONNX model
+- `PDF2MD_OCR_DICT_PATH` - Custom path to OCR character dictionary
 - `ORT_LIB_PATH` - Custom path to ONNX Runtime library
 
 **Execution Provider Priority**:
@@ -235,3 +279,42 @@ The analyzer classifies blocks into these element types (defined in `internal/ty
 - `ElementTypeCaption` - Figure/table captions detected by ONNX
 - `ElementTypeEquation` - Mathematical formulas detected by ONNX
 - `ElementTypeFootnote` - Table footnotes detected by ONNX
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

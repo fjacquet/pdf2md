@@ -1,5 +1,5 @@
 # Binaries
-pdf2md
+/pdf2md
 *.exe
 *.dll
 *.so
@@ -44,3 +44,5 @@ READoc/
 # test work directory
 
 work/
+# Added by code-review-graph
+.code-review-graph/

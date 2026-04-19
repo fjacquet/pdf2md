@@ -67,7 +67,7 @@ func DefaultConfig() *Config {
 		NMSThreshold:  0.45,
 		InputSize:     1024,
 		Stride:        32,
-		UseCoreML:     runtime.GOOS == "darwin", // Enable CoreML by default on macOS
+		UseCoreML:     false, // Disabled: DocLayout-YOLO model has ops incompatible with CoreML
 	}
 }
 
@@ -253,14 +253,16 @@ func (d *Detector) createSessionOptions(logger *slog.Logger) (*ort.SessionOption
 
 	// Try to enable CoreML on macOS
 	if d.config.UseCoreML && runtime.GOOS == "darwin" {
-		// CoreML options for optimal performance
+		// CoreML execution provider for Apple Neural Engine/GPU
 		// See: https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html
-		coreMLOptions := map[string]string{
-			"CoreMLFlags": "0", // Default flags (can use COREML_FLAG_USE_CPU_AND_GPU = 1)
-		}
+		// Note: Homebrew's onnxruntime is built without CoreML support.
+		// For CoreML, use official Microsoft releases from GitHub.
+		// Use empty options to get default behavior (works across versions).
+		coreMLOptions := map[string]string{}
 
 		if err := options.AppendExecutionProviderCoreMLV2(coreMLOptions); err != nil {
 			// CoreML not available, fall back to CPU (this is not fatal)
+			// Common reasons: Homebrew build, missing CoreML framework, unsupported model ops
 			logger.Debug("CoreML execution provider not available, using CPU", "error", err)
 		} else {
 			logger.Info("CoreML execution provider enabled (Apple Neural Engine/GPU)")

@@ -9,9 +9,9 @@ import (
 
 func TestParseDetections(t *testing.T) {
 	raw := [][]float32{
-		{10, 20, 100, 200, 0.9, 0},   // High confidence
-		{50, 50, 150, 150, 0.3, 1},   // Medium confidence
-		{0, 0, 50, 50, 0.1, 2},       // Low confidence
+		{10, 20, 100, 200, 0.9, 0}, // High confidence
+		{50, 50, 150, 150, 0.3, 1}, // Medium confidence
+		{0, 0, 50, 50, 0.1, 2},     // Low confidence
 	}
 
 	tests := []struct {

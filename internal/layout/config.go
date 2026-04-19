@@ -1,7 +1,5 @@
 package layout
 
-import "runtime"
-
 // Config holds configurable thresholds for layout analysis.
 // These values can be adjusted to fine-tune the analysis for different
 // document types and formatting styles.
@@ -40,15 +38,15 @@ type Config struct {
 	// ONNX Layout Detection
 	// ONNX detection provides ML-based layout analysis using DocLayout-YOLO model.
 	// When enabled, it overrides rule-based classification for detected regions.
-	EnableONNX          bool    // Enable ONNX layout detection (default: true)
-	ONNXModelPath       string  // Path to ONNX model file (auto-detected if empty)
-	ONNXRuntimePath     string  // Path to ONNX Runtime library (auto-detected if empty)
-	ONNXConfThreshold   float64 // Minimum confidence for ONNX detections (default: 0.25)
-	ONNXNMSThreshold    float64 // IoU threshold for Non-Maximum Suppression (default: 0.45)
-	MinONNXConfidence   float64 // Minimum confidence to override rule-based classification (default: 0.5)
-	ONNXInputSize       int     // Model input size in pixels (default: 1024)
-	ONNXStride          int     // Model stride for padding alignment (default: 32)
-	ONNXUseCoreML       bool    // Enable CoreML acceleration on macOS (default: true on darwin)
+	EnableONNX        bool    // Enable ONNX layout detection (default: true)
+	ONNXModelPath     string  // Path to ONNX model file (auto-detected if empty)
+	ONNXRuntimePath   string  // Path to ONNX Runtime library (auto-detected if empty)
+	ONNXConfThreshold float64 // Minimum confidence for ONNX detections (default: 0.25)
+	ONNXNMSThreshold  float64 // IoU threshold for Non-Maximum Suppression (default: 0.45)
+	MinONNXConfidence float64 // Minimum confidence to override rule-based classification (default: 0.5)
+	ONNXInputSize     int     // Model input size in pixels (default: 1024)
+	ONNXStride        int     // Model stride for padding alignment (default: 32)
+	ONNXUseCoreML     bool    // Enable CoreML acceleration on macOS (default: true on darwin)
 }
 
 // DefaultConfig returns the default layout configuration.
@@ -88,13 +86,13 @@ func DefaultConfig() *Config {
 		EquationScoreThreshold: 2,
 
 		// ONNX Layout Detection
-		EnableONNX:        true,                      // Enabled by default for better detection quality
-		ONNXConfThreshold: 0.25,                      // Standard YOLO confidence threshold
-		ONNXNMSThreshold:  0.45,                      // Standard YOLO NMS threshold
-		MinONNXConfidence: 0.5,                       // Override rules only with high confidence detections
-		ONNXInputSize:     1024,                      // DocLayout-YOLO input size
-		ONNXStride:        32,                        // YOLO stride for padding
-		ONNXUseCoreML:     runtime.GOOS == "darwin", // Enable CoreML on macOS
+		EnableONNX:        true,  // Enabled by default for better detection quality
+		ONNXConfThreshold: 0.25,  // Standard YOLO confidence threshold
+		ONNXNMSThreshold:  0.45,  // Standard YOLO NMS threshold
+		MinONNXConfidence: 0.5,   // Override rules only with high confidence detections
+		ONNXInputSize:     1024,  // DocLayout-YOLO input size
+		ONNXStride:        32,    // YOLO stride for padding
+		ONNXUseCoreML:     false, // Disabled: DocLayout-YOLO uses ops incompatible with CoreML
 	}
 }
 

@@ -54,7 +54,7 @@ func (a *Analyzer) MergeDropCaps(elements []Element) []Element {
 				current.Content = content + nextContent
 				current.Width = next.X + next.Width - current.X
 				current.FontSize = next.FontSize // Use the body text font size
-				i++ // Skip next element
+				i++                              // Skip next element
 			}
 		}
 
