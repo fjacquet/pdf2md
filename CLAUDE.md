@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 pdf2md is a PDF to Markdown converter written in pure Go. It targets AI engineers building RAG pipelines and knowledge workers using tools like Obsidian.
 
-**Value Proposition**: Single-binary, zero-dependency Go tool with a custom PDF parser—no CGO or external libraries required.
+**Value Proposition**: Single-binary Go tool with a custom, pure-Go PDF parser.
+ML features (layout detection, OCR) are opt-in and require `libonnxruntime`
+on the host; the core PDF → Markdown path has no native dependencies.
 
 ## Build and Development Commands
 
@@ -46,6 +48,7 @@ make run-test
 ```bash
 ./pdf2md input.pdf                    # Output to stdout
 ./pdf2md input.pdf output.md          # Save to file
+./pdf2md --version                    # Print version and exit
 ./pdf2md --debug input.pdf            # Enable debug logging
 ./pdf2md --exclude-top=50 input.pdf   # Exclude header region
 ./pdf2md --exclude-bottom=30 input.pdf # Exclude footer region
@@ -63,6 +66,20 @@ make run-test
 ./pdf2md --ocr-rec-model-path=/rec.onnx input.pdf
 ./pdf2md --ocr-dict-path=/dict.txt input.pdf  # Required only if model uses a non-Latin dict
 ```
+
+## Release & Versioning
+
+Releases are cut by tagging on `maincd`:
+
+```bash
+git tag v0.1.2 -m "…" && git push origin v0.1.2
+```
+
+The tag push triggers `.github/workflows/release.yml`, which runs
+`goreleaser release --clean` inside `ghcr.io/goreleaser/goreleaser-cross:v1.25`
+and publishes tarballs for darwin/linux amd64+arm64 plus a windows amd64
+zip. Version metadata is injected via ldflags into `main.version`,
+`main.commit`, `main.date` — check with `./pdf2md --version`.
 
 ## Architecture
 
@@ -119,7 +136,8 @@ Custom pure Go PDF parser that handles:
 
 ML-based layout detection using DocLayout-YOLO model:
 
-- **detector.go** - `Detector` interface and onnxruntime-purego implementation
+- **detector.go** - `Detector` interface and `github.com/yalue/onnxruntime_go`
+  implementation (cgo + `dlopen` of `libonnxruntime` at runtime)
 - **preprocessing.go** - Image preparation: letterbox resize, normalize, BCHW tensor
 - **postprocessing.go** - NMS, confidence filtering, box scaling to page coordinates
 - **model.go** - Auto-download model from Hugging Face if not present
@@ -172,7 +190,9 @@ Shared cache primitives live in `internal/modelcache/` (used by both
 
 ## Key Design Decisions
 
-1. **Pure Go** - Custom PDF parser avoids CGO complexity and licensing issues
+1. **Pure-Go PDF parser** - Custom parser avoids CGO for the core path. ML
+   features (ONNX layout, OCR) are cgo, loaded via `dlopen` so the binary
+   still builds and runs without `libonnxruntime` present.
 2. **Pluggable extractors** - Interface design allows future upgrades without rewriting analyzers
 3. **Coordinate-based analysis** - Uses X/Y positions rather than PDF structure hints
 4. **Rule-based classification** - Extensible system for element type detection
