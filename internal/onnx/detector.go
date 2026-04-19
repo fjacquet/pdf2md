@@ -169,7 +169,7 @@ func (d *Detector) DetectLayout(pageImage image.Image, pageWidth, pageHeight flo
 func (d *Detector) Close() error {
 	d.available = false
 	if d.session != nil {
-		d.session.Destroy()
+		_ = d.session.Destroy()
 		d.session = nil
 	}
 	return nil
@@ -218,7 +218,7 @@ func (d *Detector) initialize() error {
 		logger.Debug("Failed to create session options", "error", err)
 		return nil // Non-fatal
 	}
-	defer sessionOptions.Destroy()
+	defer func() { _ = sessionOptions.Destroy() }()
 
 	// 5. Create ONNX session
 	// DocLayout-YOLO input: "images" [1, 3, 1024, 1024]
@@ -286,7 +286,7 @@ func (d *Detector) runInference(tensor []float32) ([][]float32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create input tensor: %w", err)
 	}
-	defer inputTensor.Destroy()
+	defer func() { _ = inputTensor.Destroy() }()
 
 	// Run inference with auto-allocated output
 	outputs := []ort.Value{nil}
@@ -299,7 +299,7 @@ func (d *Detector) runInference(tensor []float32) ([][]float32, error) {
 	if outputs[0] == nil {
 		return nil, fmt.Errorf("no output from model")
 	}
-	defer outputs[0].Destroy()
+	defer func() { _ = outputs[0].Destroy() }()
 
 	// Cast to float32 tensor and get data
 	outputTensor, ok := outputs[0].(*ort.Tensor[float32])

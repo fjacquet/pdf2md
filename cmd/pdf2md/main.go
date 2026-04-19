@@ -145,13 +145,14 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 		logger.Debug("ONNX enabled, initializing detector")
 		onnxConfig := layout.CreateONNXConfig(config)
 		det, err := onnx.NewDetector(onnxConfig, nil)
-		if err != nil {
+		switch {
+		case err != nil:
 			logger.Warn("Failed to initialize ONNX detector, using rule-based only", "error", err)
-		} else if det.IsAvailable() {
+		case det.IsAvailable():
 			detector = det
 			defer func() { _ = det.Close() }()
 			logger.Info("ONNX layout detection enabled")
-		} else {
+		default:
 			logger.Debug("ONNX detector created but not available (runtime/model not found)")
 		}
 	} else {
@@ -167,13 +168,14 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 		ocrConfig.DictPath = opts.ocrDictPath
 		ocrConfig.RuntimePath = opts.runtimePath
 		rec, err := ocr.NewPaddleRecognizer(ocrConfig, nil)
-		if err != nil {
+		switch {
+		case err != nil:
 			logger.Warn("Failed to initialize OCR recognizer", "error", err)
-		} else if rec.IsAvailable() {
+		case rec.IsAvailable():
 			recognizer = rec
 			defer func() { _ = rec.Close() }()
 			logger.Info("OCR fallback enabled")
-		} else {
+		default:
 			logger.Debug("OCR recognizer not available (models or runtime missing)")
 		}
 	}
@@ -189,7 +191,7 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 		return "", fmt.Errorf("failed to get page count: %w", err)
 	}
 
-	for i := 0; i < pageCount; i++ {
+	for i := range pageCount {
 		// Extract content
 		content, err := ext.ExtractTextBlocks(i + 1)
 		if err != nil {

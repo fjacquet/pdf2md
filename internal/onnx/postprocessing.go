@@ -166,10 +166,10 @@ func ScaleBoxToPage(
 	y2 := (box.Y2 - padY) / scale
 
 	// Clamp to page bounds
-	x1 = clamp(x1, 0, pageWidth)
-	y1 = clamp(y1, 0, pageHeight)
-	x2 = clamp(x2, 0, pageWidth)
-	y2 = clamp(y2, 0, pageHeight)
+	x1 = max(0, min(x1, pageWidth))
+	y1 = max(0, min(y1, pageHeight))
+	x2 = max(0, min(x2, pageWidth))
+	y2 = max(0, min(y2, pageHeight))
 
 	return types.BoundingBox{
 		X1:         x1,
@@ -180,17 +180,6 @@ func ScaleBoxToPage(
 		ClassID:    box.ClassID,
 		ClassName:  box.ClassName,
 	}
-}
-
-// clamp restricts a value to [min, max].
-func clamp(v, minVal, maxVal float64) float64 {
-	if v < minVal {
-		return minVal
-	}
-	if v > maxVal {
-		return maxVal
-	}
-	return v
 }
 
 // FilterByConfidence returns boxes with confidence >= threshold.

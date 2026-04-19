@@ -146,7 +146,7 @@ func applyPredictor(data []byte, predictor, columns, colors, bpc int) ([]byte, e
 					left = dest[j-bytesPerPixel]
 				}
 				up := prev[j]
-				dest[j] = raw[j] + byte((int(left)+int(up))/2)
+				dest[j] = raw[j] + byte((int(left)+int(up))/2) //nolint:gosec // PNG avg predictor: byte wraparound is the algorithm's intent
 			}
 		case 4: // Paeth
 			for j := 0; j < rowLen; j++ {
@@ -289,9 +289,9 @@ func decodeASCII85(data []byte) ([]byte, error) {
 				uint32(tuple[4])
 
 			out.WriteByte(byte(val >> 24))
-			out.WriteByte(byte(val >> 16))
-			out.WriteByte(byte(val >> 8))
-			out.WriteByte(byte(val))
+			out.WriteByte(byte(val >> 16)) //nolint:gosec // ASCII85: intentional byte extraction via shift+mask
+			out.WriteByte(byte(val >> 8))  //nolint:gosec // ASCII85: intentional byte extraction via shift+mask
+			out.WriteByte(byte(val))       //nolint:gosec // ASCII85: intentional byte extraction via shift+mask
 			tupleIndex = 0
 		}
 	}
@@ -316,10 +316,10 @@ func decodeASCII85(data []byte) ([]byte, error) {
 			out.WriteByte(byte(val >> 24))
 		}
 		if numBytes >= 2 {
-			out.WriteByte(byte(val >> 16))
+			out.WriteByte(byte(val >> 16)) //nolint:gosec // ASCII85: intentional byte extraction via shift+mask
 		}
 		if numBytes >= 3 {
-			out.WriteByte(byte(val >> 8))
+			out.WriteByte(byte(val >> 8)) //nolint:gosec // ASCII85: intentional byte extraction via shift+mask
 		}
 	}
 

@@ -44,13 +44,13 @@ func TestReader_XRefStm(t *testing.T) {
 	var streamData bytes.Buffer
 	// Obj 1: Type 1, Offset, Gen 0
 	streamData.WriteByte(1)
-	streamData.WriteByte(byte(obj1Offset >> 8))
-	streamData.WriteByte(byte(obj1Offset))
+	streamData.WriteByte(byte(obj1Offset >> 8)) //nolint:gosec // test fixture: obj1Offset is a known small int
+	streamData.WriteByte(byte(obj1Offset))      //nolint:gosec // test fixture: obj1Offset is a known small int
 	streamData.WriteByte(0)
 
 	compressedData := compress(streamData.Bytes())
 
-	buf.WriteString(fmt.Sprintf("4 0 obj\n<< /Type /XRef /Size 5 /W [1 2 1] /Index [1 1] /Filter /FlateDecode /Length %d >>\nstream\n", len(compressedData)))
+	fmt.Fprintf(&buf, "4 0 obj\n<< /Type /XRef /Size 5 /W [1 2 1] /Index [1 1] /Filter /FlateDecode /Length %d >>\nstream\n", len(compressedData))
 	buf.Write(compressedData)
 	buf.WriteString("\nendstream\nendobj\n")
 
@@ -59,15 +59,15 @@ func TestReader_XRefStm(t *testing.T) {
 	buf.WriteString("xref\n")
 	buf.WriteString("0 1\n0000000000 65535 f \n")
 	buf.WriteString("2 3\n") // Objects 2, 3, 4
-	buf.WriteString(fmt.Sprintf("%010d 00000 n \n", obj2Offset))
-	buf.WriteString(fmt.Sprintf("%010d 00000 n \n", obj3Offset))
-	buf.WriteString(fmt.Sprintf("%010d 00000 n \n", obj4Offset))
+	fmt.Fprintf(&buf, "%010d 00000 n \n", obj2Offset)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", obj3Offset)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", obj4Offset)
 
 	// Trailer
 	buf.WriteString("trailer\n")
-	buf.WriteString(fmt.Sprintf("<< /Size 5 /Root 1 0 R /XRefStm %d >>\n", obj4Offset))
+	fmt.Fprintf(&buf, "<< /Size 5 /Root 1 0 R /XRefStm %d >>\n", obj4Offset)
 	buf.WriteString("startxref\n")
-	buf.WriteString(fmt.Sprintf("%d\n", xrefOffset))
+	fmt.Fprintf(&buf, "%d\n", xrefOffset)
 	buf.WriteString("%%EOF\n")
 
 	// Write to temp file

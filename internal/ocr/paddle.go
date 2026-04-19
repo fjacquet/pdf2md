@@ -38,9 +38,7 @@ func NewPaddleRecognizer(config *Config, deps *Deps) (*PaddleRecognizer, error) 
 		deps = DefaultDeps()
 	}
 	r := &PaddleRecognizer{config: config, deps: deps}
-	if err := r.initialize(); err != nil {
-		return nil, err
-	}
+	r.initialize()
 	return r, nil
 }
 
@@ -81,11 +79,11 @@ func (r *PaddleRecognizer) RecognizePage(pageImage image.Image, pageWidth, pageH
 func (r *PaddleRecognizer) Close() error {
 	r.available = false
 	if r.detSess != nil {
-		r.detSess.Destroy()
+		_ = r.detSess.Destroy()
 		r.detSess = nil
 	}
 	if r.recSess != nil {
-		r.recSess.Destroy()
+		_ = r.recSess.Destroy()
 		r.recSess = nil
 	}
 	return nil
@@ -96,37 +94,37 @@ func (r *PaddleRecognizer) IsAvailable() bool { return r.available }
 
 // initialize resolves paths, boots ONNX runtime, loads dict, and opens sessions.
 // Missing resources are non-fatal: recognizer simply stays unavailable.
-func (r *PaddleRecognizer) initialize() error {
+func (r *PaddleRecognizer) initialize() {
 	logger := slog.Default()
 
 	runtimePath, err := r.deps.ResolveRuntime(r.config.RuntimePath)
 	if err != nil {
 		logger.Debug("ocr: ONNX runtime not found", "error", err)
-		return nil
+		return
 	}
 	if !ort.IsInitialized() {
 		ort.SetSharedLibraryPath(runtimePath)
 		if err := ort.InitializeEnvironment(); err != nil {
 			logger.Debug("ocr: ONNX init failed", "error", err)
-			return nil
+			return
 		}
 	}
 
 	detPath, err := r.deps.ResolveDetModel(r.config.DetModelPath)
 	if err != nil {
 		logger.Debug("ocr: det model not found", "error", err)
-		return nil
+		return
 	}
 	recPath, err := r.deps.ResolveRecModel(r.config.RecModelPath)
 	if err != nil {
 		logger.Debug("ocr: rec model not found", "error", err)
-		return nil
+		return
 	}
 
 	chars, err := r.deps.LoadDict(r.config.DictPath)
 	if err != nil {
 		logger.Debug("ocr: dict load failed", "error", err)
-		return nil
+		return
 	}
 	// CTC blank is implicitly class 0; chars index i maps to class i+1.
 	r.chars = chars
@@ -134,20 +132,19 @@ func (r *PaddleRecognizer) initialize() error {
 	detSess, detIn, detOut, err := openSession(detPath, r.sessionOptions(logger))
 	if err != nil {
 		logger.Debug("ocr: det session failed", "error", err)
-		return nil
+		return
 	}
 	recSess, recIn, recOut, err := openSession(recPath, r.sessionOptions(logger))
 	if err != nil {
-		detSess.Destroy()
+		_ = detSess.Destroy()
 		logger.Debug("ocr: rec session failed", "error", err)
-		return nil
+		return
 	}
 
 	r.detSess, r.detInput, r.detOutput = detSess, detIn, detOut
 	r.recSess, r.recInput, r.recOutput = recSess, recIn, recOut
 	r.available = true
 	logger.Debug("ocr: PaddleRecognizer ready", "det", detPath, "rec", recPath)
-	return nil
 }
 
 // sessionOptions builds per-session options. CoreML is opt-in because
@@ -265,7 +262,7 @@ func runSession(sess *ort.DynamicAdvancedSession, tensor []float32, shape ort.Sh
 	if err != nil {
 		return nil, nil, fmt.Errorf("tensor: %w", err)
 	}
-	defer input.Destroy()
+	defer func() { _ = input.Destroy() }()
 
 	outputs := []ort.Value{nil}
 	if err := sess.Run([]ort.Value{input}, outputs); err != nil {
@@ -274,7 +271,7 @@ func runSession(sess *ort.DynamicAdvancedSession, tensor []float32, shape ort.Sh
 	if outputs[0] == nil {
 		return nil, nil, fmt.Errorf("nil output")
 	}
-	defer outputs[0].Destroy()
+	defer func() { _ = outputs[0].Destroy() }()
 
 	out, ok := outputs[0].(*ort.Tensor[float32])
 	if !ok {

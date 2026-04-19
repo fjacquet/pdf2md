@@ -20,7 +20,7 @@ import (
 // 2. Pad to exact targetSize x targetSize
 // 3. Convert to BCHW float32 tensor
 // 4. Normalize to [0, 1]
-func Preprocess(img image.Image, targetSize, stride int) (tensor []float32, scale, padX, padY float64) {
+func Preprocess(img image.Image, targetSize int, _ int) (tensor []float32, scale, padX, padY float64) {
 	// Calculate letterbox dimensions
 	bounds := img.Bounds()
 	origW, origH := bounds.Dx(), bounds.Dy()
@@ -65,14 +65,6 @@ func LetterboxScale(origW, origH, targetW, targetH int) (scale float64, newW, ne
 	newH = int(float64(origH) * scale)
 
 	return scale, newW, newH
-}
-
-// alignToStride rounds up to the nearest multiple of stride.
-func alignToStride(size, stride int) int {
-	if size%stride == 0 {
-		return size
-	}
-	return ((size / stride) + 1) * stride
 }
 
 // ResizeImage resizes an image to the specified dimensions using high-quality interpolation.

@@ -15,7 +15,7 @@ type mockDetector struct {
 	detectError error
 }
 
-func (m *mockDetector) DetectLayout(pageImage image.Image, pageWidth, pageHeight float64) (*types.PageDetections, error) {
+func (m *mockDetector) DetectLayout(_ image.Image, _, _ float64) (*types.PageDetections, error) {
 	if m.detectError != nil {
 		return nil, m.detectError
 	}

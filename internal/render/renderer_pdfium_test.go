@@ -2,7 +2,6 @@ package render
 
 import (
 	"errors"
-	"image"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +34,7 @@ func TestNewPdfiumRenderer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPdfiumRenderer() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	if renderer.PageCount() <= 0 {
 		t.Errorf("PageCount() = %d, want > 0", renderer.PageCount())
@@ -55,7 +54,7 @@ func TestNewPdfiumRenderer_WithConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPdfiumRenderer() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	if renderer.PageCount() <= 0 {
 		t.Errorf("PageCount() = %d, want > 0", renderer.PageCount())
@@ -76,7 +75,7 @@ func TestPdfiumRenderer_PageSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPdfiumRenderer() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	width, height, err := renderer.PageSize(0)
 	if err != nil {
@@ -99,7 +98,7 @@ func TestPdfiumRenderer_PageSize_InvalidPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPdfiumRenderer() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	// Test negative page index
 	_, _, err = renderer.PageSize(-1)
@@ -124,7 +123,7 @@ func TestPdfiumRenderer_RenderPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPdfiumRenderer() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	// Render first page at default DPI
 	img, err := renderer.RenderPage(0, 0) // 0 uses config default
@@ -149,7 +148,7 @@ func TestPdfiumRenderer_RenderPage_CustomDPI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPdfiumRenderer() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	// Render at low DPI
 	imgLow, err := renderer.RenderPage(0, 72)
@@ -181,7 +180,7 @@ func TestPdfiumRenderer_RenderPage_InvalidPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPdfiumRenderer() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	// Test negative page index
 	_, err = renderer.RenderPage(-1, 150)
@@ -228,7 +227,7 @@ func TestDefaultRendererFactory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DefaultRendererFactory() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	// Verify it's a working renderer
 	if renderer.PageCount() <= 0 {
@@ -237,7 +236,7 @@ func TestDefaultRendererFactory(t *testing.T) {
 }
 
 // Verify PdfiumRenderer implements PageRenderer interface
-func TestPdfiumRenderer_ImplementsPageRenderer(t *testing.T) {
+func TestPdfiumRenderer_ImplementsPageRenderer(_ *testing.T) {
 	var _ PageRenderer = (*PdfiumRenderer)(nil)
 }
 
@@ -249,7 +248,7 @@ func TestPdfiumRenderer_RenderPage_ImageType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPdfiumRenderer() error = %v", err)
 	}
-	defer renderer.Close()
+	defer func() { _ = renderer.Close() }()
 
 	img, err := renderer.RenderPage(0, 150)
 	if err != nil {
@@ -257,7 +256,7 @@ func TestPdfiumRenderer_RenderPage_ImageType(t *testing.T) {
 	}
 
 	// Verify it's a valid image
-	var _ image.Image = img
+	_ = img
 
 	// Check that ColorModel is not nil
 	if img.ColorModel() == nil {

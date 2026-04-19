@@ -11,6 +11,8 @@ import (
 
 // LayoutDetector defines the interface for ONNX-based layout detection.
 // This interface is defined here (consumer side) per Go idioms.
+//
+//nolint:revive // name is part of the exported API surface; renaming would ripple through callers
 type LayoutDetector interface {
 	DetectLayout(pageImage image.Image, pageWidth, pageHeight float64) (*types.PageDetections, error)
 	Close() error
@@ -37,7 +39,7 @@ func NewAnalyzerWithONNX(config *Config, detector LayoutDetector) *AnalyzerWithO
 // Otherwise falls back to rule-based analysis.
 func (a *AnalyzerWithONNX) AnalyzeWithImage(content *extractor.PageContent, pageImage image.Image) []Element {
 	// First, run the standard rule-based analysis
-	elements := a.Analyzer.Analyze(content)
+	elements := a.Analyze(content)
 
 	// If no detector or no image, return rule-based results
 	if a.detector == nil || !a.detector.IsAvailable() || pageImage == nil {

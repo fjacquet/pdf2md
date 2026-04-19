@@ -70,7 +70,7 @@ func NewPdfiumRenderer(pdfPath string, config *RenderConfig) (*PdfiumRenderer, e
 		FilePath: &pdfPath,
 	})
 	if err != nil {
-		instance.Close()
+		_ = instance.Close()
 		return nil, fmt.Errorf("failed to open PDF: %w", err)
 	}
 
@@ -79,7 +79,7 @@ func NewPdfiumRenderer(pdfPath string, config *RenderConfig) (*PdfiumRenderer, e
 		Document: doc.Document,
 	})
 	if err != nil {
-		instance.Close()
+		_ = instance.Close()
 		return nil, fmt.Errorf("failed to get page count: %w", err)
 	}
 
@@ -174,7 +174,7 @@ func (r *PdfiumRenderer) Close() error {
 		if err != nil {
 			log.Printf("warning: failed to close PDF document: %v", err)
 		}
-		r.instance.Close()
+		_ = r.instance.Close()
 	}
 
 	return nil
@@ -197,6 +197,6 @@ func RendererFactoryWithConfig(config *RenderConfig) RendererFactory {
 // Call this at program exit to cleanly release resources.
 func ClosePdfiumPool() {
 	if pdfiumPool != nil {
-		pdfiumPool.Close()
+		_ = pdfiumPool.Close()
 	}
 }

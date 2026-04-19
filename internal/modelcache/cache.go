@@ -44,7 +44,7 @@ func Dir(subdir string) (string, error) {
 
 // Exists reports whether path points to a regular file.
 func Exists(path string) bool {
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) //nolint:gosec // G304/G703: caller supplies model path via CLI flag or env var
 	return err == nil && !info.IsDir()
 }
 

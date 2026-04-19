@@ -1,3 +1,5 @@
+// Package render provides PDF-to-image rendering via go-pdfium.
+// Used by ONNX layout detection and OCR fallback to produce page images.
 package render
 
 import (
@@ -34,6 +36,8 @@ type PageRenderer interface {
 }
 
 // RenderConfig holds configuration for page rendering.
+//
+//nolint:revive // name is exported API; renaming would churn callers
 type RenderConfig struct {
 	// DPI for rendering (default: 150 for good ONNX input quality)
 	DPI float64
@@ -58,6 +62,8 @@ func DefaultRenderConfig() *RenderConfig {
 // RenderConfigForONNX returns configuration optimized for ONNX model input.
 // Uses 150 DPI which typically produces images around 1200x1500 pixels
 // for standard letter/A4 pages, suitable for the 1024x1024 YOLO input.
+//
+//nolint:revive // name is exported API; renaming would churn callers
 func RenderConfigForONNX() *RenderConfig {
 	return &RenderConfig{
 		DPI:             150.0,
