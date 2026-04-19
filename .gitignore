@@ -46,3 +46,6 @@ READoc/
 work/
 # Added by code-review-graph
 .code-review-graph/
+
+# goreleaser output
+/dist/

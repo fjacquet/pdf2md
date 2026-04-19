@@ -18,9 +18,17 @@ import (
 	"github.com/fjacquet/pdf2md/internal/render"
 )
 
+// Build-time metadata injected via -ldflags by goreleaser.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 var CLI struct {
 	Input         string  `arg:"" optional:"" help:"Input PDF file path." type:"path"`
 	Output        string  `arg:"" optional:"" help:"Output Markdown file path." type:"path"`
+	Version       bool    `name:"version" short:"V" help:"Print version and exit."`
 	Debug         bool    `help:"Enable debug logging."`
 	ExcludeTop    float64 `name:"exclude-top" help:"Height from top to exclude (e.g. for headers)." default:"0"`
 	ExcludeBottom float64 `name:"exclude-bottom" help:"Height from bottom to exclude (e.g. for footers)." default:"0"`
@@ -39,6 +47,11 @@ var CLI struct {
 
 func main() {
 	ctx := kong.Parse(&CLI)
+
+	if CLI.Version {
+		fmt.Printf("pdf2md %s (commit %s, built %s)\n", version, commit, date)
+		return
+	}
 
 	// If no input provided, print help and exit
 	if CLI.Input == "" {
