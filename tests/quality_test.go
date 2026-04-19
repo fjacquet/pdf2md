@@ -30,14 +30,15 @@ func TestQuality_EndToEnd(t *testing.T) {
 
 	outputPath := filepath.Join(wd, "output_quality.md")
 
-	// Check binary existence
+	// Skip (don't fail) when the pre-built binary or the sample PDF
+	// are not present — this test is an optional local/E2E check.
+	// The sample PDF is gitignored (testdata/*.pdf) and CI has no
+	// way to provide it, so a missing file here is not a regression.
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
-		t.Fatalf("Binary not found at %s. Please run 'go build ./cmd/pdf2md' first.", binaryPath)
+		t.Skipf("Skipping E2E quality test: binary not built at %s (run 'go build ./cmd/pdf2md' to enable)", binaryPath)
 	}
-
-	// Check input existence
 	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		t.Fatalf("Input PDF not found at %s", inputPath)
+		t.Skipf("Skipping E2E quality test: sample PDF not present at %s", inputPath)
 	}
 
 	// Remove previous output
