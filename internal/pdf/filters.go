@@ -3,9 +3,16 @@ package pdf
 import (
 	"bytes"
 	"compress/zlib"
+	"errors"
 	"fmt"
 	"io"
 )
+
+// ErrFilterUnsupported is returned when a stream uses a filter whose pure-Go
+// decoder is not implemented (e.g., JBIG2Decode). Callers can distinguish
+// this from "PDF is malformed" and degrade gracefully (flag the image as
+// missing, keep extracting the rest of the page).
+var ErrFilterUnsupported = errors.New("pdf: filter unsupported")
 
 // DecodeStream decodes a stream based on its filter and optional parameters
 func DecodeStream(data []byte, filter Name, params Dictionary) ([]byte, error) {
@@ -19,12 +26,28 @@ func DecodeStream(data []byte, filter Name, params Dictionary) ([]byte, error) {
 		// DCTDecode is usually JPEG, which is already compressed.
 		// We return it as is, and the consumer should handle it as JPEG data.
 		return data, nil
+	case "JPXDecode":
+		// JPXDecode is JPEG2000. Like DCTDecode, the raw bytes are already a
+		// valid compressed image file; downstream callers embed it with
+		// format="jp2" and let JP2-capable viewers render it.
+		return data, nil
 	case "ASCIIHexDecode":
 		decoded, err = decodeASCIIHex(data)
 	case "ASCII85Decode":
 		decoded, err = decodeASCII85(data)
 	case "LZWDecode":
 		decoded, err = decodeLZW(data, params)
+	case "RunLengthDecode":
+		decoded, err = decodeRunLength(data)
+	case "CCITTFaxDecode":
+		decoded, err = decodeCCITTFax(data, params)
+	case "JBIG2Decode":
+		return nil, fmt.Errorf("%w: JBIG2Decode", ErrFilterUnsupported)
+	case "Crypt":
+		// /Crypt with /Identity CFN is a no-op. Any other CFN would require
+		// the document's security handler — which decrypts upstream of this
+		// dispatch when enabled, so the stream is already plaintext here.
+		return data, nil
 	default:
 		// Unknown filter or no filter
 		return data, nil
@@ -74,6 +97,56 @@ func DecodeStream(data []byte, filter Name, params Dictionary) ([]byte, error) {
 	}
 
 	return decoded, nil
+}
+
+// decodeRunLength implements the PDF RunLengthDecode filter (ISO 32000-1 §7.4.5).
+// The data is a sequence of length-prefixed runs:
+//   - length in [0, 127]: the next length+1 bytes are copied literally.
+//   - length in [129, 255]: the next single byte is repeated 257-length times.
+//   - length == 128: end-of-data marker.
+func decodeRunLength(data []byte) ([]byte, error) {
+	var out bytes.Buffer
+	i := 0
+	for i < len(data) {
+		length := int(data[i])
+		i++
+		switch {
+		case length == 128:
+			return out.Bytes(), nil
+		case length < 128:
+			n := length + 1
+			if i+n > len(data) {
+				return nil, fmt.Errorf("RunLengthDecode: literal run truncated")
+			}
+			out.Write(data[i : i+n])
+			i += n
+		default: // length > 128
+			if i >= len(data) {
+				return nil, fmt.Errorf("RunLengthDecode: repeat run truncated")
+			}
+			b := data[i]
+			i++
+			for j := 0; j < 257-length; j++ {
+				out.WriteByte(b)
+			}
+		}
+	}
+	// No explicit EOD is acceptable per spec leniency.
+	return out.Bytes(), nil
+}
+
+// decodeCCITTFax decodes a CCITT Group 4 (K < 0) fax-compressed stream.
+// Only K < 0 (pure G4) is implemented; K = 0 (G3 1D) and K > 0 (G3 2D) are
+// reported as unsupported so callers can gracefully flag the image.
+//
+// NOTE: full G4 decoding is nontrivial; this initial pass returns
+// ErrFilterUnsupported. A subsequent task ports pdfcpu's pkg/filter
+// implementation (Apache-2.0). Keeping the dispatch case wired so the error
+// is explicit instead of silent pass-through.
+//
+//nolint:unparam // stub: real G4 port will return decoded bytes on success
+func decodeCCITTFax(_ []byte, _ Dictionary) ([]byte, error) {
+	return nil, fmt.Errorf("%w: CCITTFaxDecode (G4) decoder not yet implemented", ErrFilterUnsupported)
 }
 
 func decodeFlate(data []byte) ([]byte, error) {

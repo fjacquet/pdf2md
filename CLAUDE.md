@@ -77,7 +77,24 @@ Custom pure Go PDF parser that handles:
 - Content stream interpretation (`interpreter.go`, `content.go`)
 - Font handling: CMap, Type1, TrueType encodings (`font.go`, `encodings.go`)
 - Graphics state management (`graphics_state.go`, `matrix.go`)
-- Stream filters: FlateDecode, ASCII85, etc. (`filters.go`)
+- Stream filters (`filters.go`):
+  - **Full decoders**: FlateDecode, ASCIIHexDecode, ASCII85Decode, LZWDecode,
+    RunLengthDecode
+  - **Passthrough** (bytes already a valid image file): DCTDecode (JPEG),
+    JPXDecode (JPEG2000, tagged `format="jp2"`)
+  - **Explicit `ErrFilterUnsupported`**: JBIG2Decode, CCITTFaxDecode (G4
+    decoder port is deferred; see `internal/pdf/filters.go::decodeCCITTFax`)
+  - **No-op**: `/Crypt` — decryption happens upstream in the security handler,
+    so the stream is plaintext by the time it reaches the filter dispatch
+- Document encryption (`crypt.go`):
+  - **Supported**: standard security handler V=1/V=2 (RC4 40-/128-bit, R=2/3)
+    and V=4 R=4 (RC4 or AES-128, `/CFM` = `V2` or `AESV2`)
+  - **Constraint**: only the empty user password is tried — covers the common
+    "owner-password-only" PDFs exported by Word. Non-empty user passwords and
+    V=5/R=6 (AES-256) return `ErrEncrypted`.
+  - Wired automatically when the trailer contains `/Encrypt`; strings and
+    stream data are decrypted inside `Reader.ReadObject`. Metadata streams
+    are exempt when `/EncryptMetadata false`.
 
 ### 2. Extraction Layer (`internal/extractor/`)
 
