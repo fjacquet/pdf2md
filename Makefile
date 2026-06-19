@@ -2,8 +2,11 @@
 .DEFAULT_GOAL := all
 DIST  ?= dist
 COVER ?= coverage.out
+# goreleaser >= v2.14.0 needs Go 1.26; pin to v2.13.0 (go directive 1.25.4) so it
+# builds under the repo's Go 1.25.4 toolchain with GOTOOLCHAIN=local.
+# golangci-lint v2.12.2 declares go 1.25.0 and installs fine on Go 1.25.x.
 GOLANGCI_VERSION ?= v2.12.2
-GORELEASER_VERSION ?= v2.16.0
+GORELEASER_VERSION ?= v2.13.0
 
 BINARY_NAME ?= pdf2md
 
