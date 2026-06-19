@@ -1,31 +1,9 @@
 name: Release
-
 on:
-  push:
-    tags:
-      - "v*"
-
+  push: { tags: ["v*"] }
 permissions:
-  contents: write
-
+  contents: read
 jobs:
-  goreleaser:
-    runs-on: ubuntu-latest
-    # goreleaser-cross ships every toolchain (osxcross, aarch64-linux-gnu,
-    # mingw-w64) so a single runner can produce all binaries. CGO is
-    # required because yalue/onnxruntime_go uses cgo/dlopen.
-    container:
-      image: ghcr.io/goreleaser/goreleaser-cross:v1.25
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Mark repo safe for git
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      - name: Release
-        run: goreleaser release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  release:
+    uses: fjacquet/ci/.github/workflows/go-release.yml@v1
+    permissions: { contents: write, packages: write, id-token: write }

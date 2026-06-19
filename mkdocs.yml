@@ -1,0 +1,36 @@
+site_name: pdf2md
+site_description: Fast, single-binary PDF to Markdown converter written in Go.
+repo_url: https://github.com/fjacquet/pdf2md
+repo_name: fjacquet/pdf2md
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - PDF Parser Spec: pdf_parser_spec.md
+  - OCR Setup: ocr-setup.md
+  - Stack Recommendation: stack_recommendation.md
