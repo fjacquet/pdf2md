@@ -2,11 +2,12 @@
 .DEFAULT_GOAL := all
 DIST  ?= dist
 COVER ?= coverage.out
-# goreleaser >= v2.14.0 needs Go 1.26; pin to v2.13.0 (go directive 1.25.4) so it
-# builds under the repo's Go 1.25.4 toolchain with GOTOOLCHAIN=local.
-# golangci-lint v2.12.2 declares go 1.25.0 and installs fine on Go 1.25.x.
 GOLANGCI_VERSION ?= v2.12.2
-GORELEASER_VERSION ?= v2.13.0
+GORELEASER_VERSION ?= v2.16.0
+# govulncheck @latest bundles x/tools v0.46.0, which panics ("ForEachElement
+# called on type containing *types.TypeParam") analysing this codebase's
+# generics. v1.1.4 bundles the older, non-buggy x/tools and scans clean.
+GOVULNCHECK_VERSION ?= v1.1.4
 
 BINARY_NAME ?= pdf2md
 
@@ -24,7 +25,7 @@ install:
 
 tools:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
-	go install golang.org/x/vuln/cmd/govulncheck@latest
+	go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
 lint:
@@ -40,7 +41,7 @@ build:
 	go build -v ./...
 
 vuln:
-	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 sbom:
 	mkdir -p $(DIST)
