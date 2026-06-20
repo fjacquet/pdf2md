@@ -1,9 +1,26 @@
 name: Release
 on:
-  push: { tags: ["v*"] }
+  push:
+    tags: ["v*"]
 permissions:
   contents: read
 jobs:
-  release:
-    uses: fjacquet/ci/.github/workflows/go-release.yml@v1
-    permissions: { contents: write, packages: write, id-token: write }
+  # pdf2md cannot use the central go-release.yml@v1: yalue/onnxruntime_go wraps native
+  # ONNX Runtime via cgo/dlopen (CGO_ENABLED=1), so every (os, arch) needs its own
+  # cross toolchain. goreleaser-cross ships osxcross / aarch64-linux-gnu / mingw-w64 in
+  # one image; the central pipeline runs on plain ubuntu with no cross toolchain.
+  goreleaser:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    container:
+      image: ghcr.io/goreleaser/goreleaser-cross:v1.26.3
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: goreleaser release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
