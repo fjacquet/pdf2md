@@ -34,3 +34,6 @@ nav:
   - PDF Parser Spec: pdf_parser_spec.md
   - OCR Setup: ocr-setup.md
   - Stack Recommendation: stack_recommendation.md
+
+extra:
+  version: v0.1.1
