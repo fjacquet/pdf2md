@@ -127,11 +127,11 @@ func (r *PdfiumRenderer) RenderPage(pageIndex int, dpi float64) (image.Image, er
 		return nil, fmt.Errorf("%w: %v", ErrRenderFailed, err)
 	}
 
-	if renderResp.Result.Image == nil {
+	if renderResp.Result.RenderedImage == nil {
 		return nil, fmt.Errorf("%w: no image returned", ErrRenderFailed)
 	}
 
-	return renderResp.Result.Image, nil
+	return renderResp.Result.RenderedImage, nil
 }
 
 // PageCount returns the total number of pages in the document.
