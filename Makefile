@@ -7,7 +7,7 @@ GORELEASER_VERSION ?= v2.18.0
 # govulncheck @latest bundles x/tools v0.46.0, which panics ("ForEachElement
 # called on type containing *types.TypeParam") analysing this codebase's
 # generics. v1.1.4 bundles the older, non-buggy x/tools and scans clean.
-GOVULNCHECK_VERSION ?= v1.1.4
+GOVULNCHECK_VERSION ?= v1.8.0
 
 BINARY_NAME ?= pdf2md
 
