@@ -29,6 +29,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed "missing bullets" issue by leveraging custom parser's text operators.
 - Fixed compilation errors in `internal/pdf` during refactoring.
 
+## [0.1.7] - 2026-10-03
+
+### Changed
+
+- Go toolchain moved to 1.27.1 (`go.mod`, release workflow `goreleaser-cross` image).
+- `golangci-lint` pin bumped v2.12.2 -> v2.13.2, `goreleaser` v2.16.0 -> v2.18.0 and
+  `govulncheck` v1.1.4 -> v1.8.0 (needed for Go 1.27).
+
+## [0.1.6] - 2026-10-02
+
+### Changed
+
+- Dependency refresh: `github.com/alecthomas/kong` 1.13.0 -> 1.16.1,
+  `github.com/klippa-app/go-pdfium` 1.17.2 -> 1.21.1,
+  `github.com/yalue/onnxruntime_go` 1.22.0 -> 1.36.0, `golang.org/x/image` 0.41.0 -> 0.46.0.
+- Security workflow added (`go-security` via `fjacquet/ci`).
+
+### Fixed
+
+- Rendering now uses go-pdfium `RenderedImage` instead of the deprecated `Image`.
+
 ## [0.1.0] - 2023-10-27
 
 ### Added
