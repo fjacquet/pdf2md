@@ -2,8 +2,8 @@
 .DEFAULT_GOAL := all
 DIST  ?= dist
 COVER ?= coverage.out
-GOLANGCI_VERSION ?= v2.12.2
-GORELEASER_VERSION ?= v2.16.0
+GOLANGCI_VERSION ?= v2.13.2
+GORELEASER_VERSION ?= v2.18.0
 # govulncheck @latest bundles x/tools v0.46.0, which panics ("ForEachElement
 # called on type containing *types.TypeParam") analysing this codebase's
 # generics. v1.1.4 bundles the older, non-buggy x/tools and scans clean.
