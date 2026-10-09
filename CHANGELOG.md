@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed "missing bullets" issue by leveraging custom parser's text operators.
 - Fixed compilation errors in `internal/pdf` during refactoring.
 
+### Security
+
+- Move Go toolchain to 1.27.2 to fix GO-2026-6603, GO-2026-6605, GO-2026-6607, GO-2026-6608, GO-2026-6610, GO-2026-6611, GO-2026-6613 and GO-2026-6617 (net/http, crypto/tls, mime/multipart).
+- Update dependencies: go-pdfium v1.21.1 -> v1.21.2, golang.org/x/sys v0.48.0 -> v0.49.0.
+- Pin `golangci-lint` v2.13.2 -> v2.14.0 (v2.13.2 cannot type-check against the Go 1.27.2 standard library).
+
 ## [0.1.7] - 2026-10-03
 
 ### Changed
