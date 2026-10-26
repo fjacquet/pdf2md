@@ -1,12 +1,12 @@
 module github.com/fjacquet/pdf2md
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/alecthomas/kong v1.16.1
-	github.com/klippa-app/go-pdfium v1.21.2
-	github.com/yalue/onnxruntime_go v1.36.0
-	golang.org/x/image v0.46.0
+	github.com/klippa-app/go-pdfium v1.21.4
+	github.com/yalue/onnxruntime_go v1.38.0
+	golang.org/x/image v0.47.0
 )
 
 require (
@@ -14,5 +14,5 @@ require (
 	github.com/jolestar/go-commons-pool/v2 v2.1.2 // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 )
