@@ -276,7 +276,7 @@ func TestNewPdfiumRenderer_RelativePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(t.TempDir())
-	if err := os.WriteFile("doc.pdf", data, 0o600); err != nil {
+	if err := os.WriteFile("doc.pdf", data, 0o600); err != nil { //nolint:gosec // G703: fixed filename in a temp dir
 		t.Fatal(err)
 	}
 

@@ -69,7 +69,7 @@ func NewPdfiumRenderer(pdfPath string, config *RenderConfig) (*PdfiumRenderer, e
 
 	// Open on the host and hand pdfium a reader: FilePath would be resolved
 	// inside Wazero, which rejects Windows volumes such as D:\.
-	f, err := os.Open(pdfPath)
+	f, err := os.Open(pdfPath) //nolint:gosec // G304: Path is user-provided, intentional for file reading
 	if err != nil {
 		_ = instance.Close()
 		return nil, fmt.Errorf("failed to open PDF: %w", err)
