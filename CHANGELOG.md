@@ -35,6 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update dependencies: go-pdfium v1.21.1 -> v1.21.2, golang.org/x/sys v0.48.0 -> v0.49.0.
 - Pin `golangci-lint` v2.13.2 -> v2.14.0 (v2.13.2 cannot type-check against the Go 1.27.2 standard library).
 
+## [0.1.8] - 2026-10-27
+
+### Fixed
+
+- ONNX layout detection and OCR were silently disabled on Windows: the PDF renderer now opens the
+  file on the host and hands go-pdfium a reader, because Wazero rejects Windows volume paths such
+  as `D:\` (#9).
+
+### Changed
+
+- CI runs the `internal/render` tests on `windows-latest`; the render tests now generate their own
+  PDF instead of skipping when the gitignored `testdata/test.pdf` is absent.
+
 ## [0.1.7] - 2026-10-03
 
 ### Changed
