@@ -2,29 +2,41 @@ package render
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
+// getTestPDFPath writes a one-page PDF to a temp dir. testdata/*.pdf is
+// gitignored, so CI would otherwise skip every render test.
 func getTestPDFPath(t *testing.T) string {
 	t.Helper()
-	// Find the project root by looking for go.mod
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Skip("cannot get working directory")
+	objs := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>",
 	}
-
-	// Navigate up to find testdata
-	for dir := cwd; dir != "/"; dir = filepath.Dir(dir) {
-		testPath := filepath.Join(dir, "testdata", "test.pdf")
-		if _, err := os.Stat(testPath); err == nil {
-			return testPath
-		}
+	var b strings.Builder
+	b.WriteString("%PDF-1.4\n")
+	offsets := make([]int, len(objs))
+	for i, o := range objs {
+		offsets[i] = b.Len()
+		fmt.Fprintf(&b, "%d 0 obj\n%s\nendobj\n", i+1, o)
 	}
+	xref := b.Len()
+	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(objs)+1)
+	for _, off := range offsets {
+		fmt.Fprintf(&b, "%010d 00000 n \n", off)
+	}
+	fmt.Fprintf(&b, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objs)+1, xref)
 
-	t.Skip("testdata/test.pdf not found")
-	return ""
+	path := filepath.Join(t.TempDir(), "test.pdf")
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestNewPdfiumRenderer(t *testing.T) {
