@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -44,6 +45,7 @@ type PdfiumRenderer struct {
 	document  references.FPDF_DOCUMENT
 	pageCount int
 	pdfPath   string
+	file      *os.File // kept open: pdfium streams the PDF from it
 	config    *RenderConfig
 }
 
@@ -65,11 +67,26 @@ func NewPdfiumRenderer(pdfPath string, config *RenderConfig) (*PdfiumRenderer, e
 		return nil, fmt.Errorf("failed to get pdfium instance: %w", err)
 	}
 
-	// Open the PDF document
+	// Open on the host and hand pdfium a reader: FilePath would be resolved
+	// inside Wazero, which rejects Windows volumes such as D:\.
+	f, err := os.Open(pdfPath)
+	if err != nil {
+		_ = instance.Close()
+		return nil, fmt.Errorf("failed to open PDF: %w", err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		_ = instance.Close()
+		return nil, fmt.Errorf("failed to open PDF: %w", err)
+	}
+
 	doc, err := instance.OpenDocument(&requests.OpenDocument{
-		FilePath: &pdfPath,
+		FileReader:     f,
+		FileReaderSize: info.Size(),
 	})
 	if err != nil {
+		_ = f.Close()
 		_ = instance.Close()
 		return nil, fmt.Errorf("failed to open PDF: %w", err)
 	}
@@ -79,6 +96,7 @@ func NewPdfiumRenderer(pdfPath string, config *RenderConfig) (*PdfiumRenderer, e
 		Document: doc.Document,
 	})
 	if err != nil {
+		_ = f.Close()
 		_ = instance.Close()
 		return nil, fmt.Errorf("failed to get page count: %w", err)
 	}
@@ -88,6 +106,7 @@ func NewPdfiumRenderer(pdfPath string, config *RenderConfig) (*PdfiumRenderer, e
 		document:  doc.Document,
 		pageCount: pageCountResp.PageCount,
 		pdfPath:   pdfPath,
+		file:      f,
 		config:    config,
 	}, nil
 }
@@ -175,6 +194,9 @@ func (r *PdfiumRenderer) Close() error {
 			log.Printf("warning: failed to close PDF document: %v", err)
 		}
 		_ = r.instance.Close()
+	}
+	if r.file != nil {
+		_ = r.file.Close()
 	}
 
 	return nil

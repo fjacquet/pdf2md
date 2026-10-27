@@ -269,3 +269,24 @@ func TestPdfiumRenderer_RenderPage_ImageType(t *testing.T) {
 		t.Error("image bounds are empty")
 	}
 }
+
+func TestNewPdfiumRenderer_RelativePath(t *testing.T) {
+	data, err := os.ReadFile(getTestPDFPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("doc.pdf", data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	renderer, err := NewPdfiumRenderer("doc.pdf", nil)
+	if err != nil {
+		t.Fatalf("NewPdfiumRenderer() error = %v", err)
+	}
+	defer func() { _ = renderer.Close() }()
+
+	if renderer.PageCount() <= 0 {
+		t.Errorf("PageCount() = %d, want > 0", renderer.PageCount())
+	}
+}
