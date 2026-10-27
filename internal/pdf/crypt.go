@@ -6,13 +6,15 @@ package pdf
 //   - V=1 (RC4 40-bit, R=2)
 //   - V=2 (RC4 variable length up to 128-bit, R=3)
 //   - V=4 (RC4 or AES-128, R=4) — /CF with /V2 or /AESV2
+//   - V=5 (AES-256, R=6) — /CF with /AESV3
+//
+// The blank password is tried first (the common "owner-password-only" case
+// produced by Word and similar exporters), then the caller's user password.
 //
 // Out of scope (returns ErrEncrypted with a clear message):
-//   - V=5 / R=6 (AES-256, PDF 2.0)
+//   - V=5 / R=5 (Adobe extension, superseded by R=6)
 //   - /Adobe.PubSec public-key security handler
-//   - Non-empty user passwords (we only accept PDFs that open with the
-//     blank user password, which is the common "owner-password-only"
-//     case produced by Word and similar exporters).
+//   - Owner passwords
 
 import (
 	"bytes"
@@ -20,14 +22,17 @@ import (
 	"crypto/cipher"
 	"crypto/md5" //nolint:gosec // G501: MD5 required by PDF spec §7.6.3.3 for key derivation
 	"crypto/rc4" //nolint:gosec // G401: RC4 required by PDF spec §7.6.3.4
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 )
 
 // ErrEncrypted indicates a PDF is encrypted but we cannot (or will not)
 // decrypt it. The wrapped message explains why.
-var ErrEncrypted = errors.New("pdf: encryption not supported")
+var ErrEncrypted = errors.New("pdf: cannot decrypt document")
 
 // passwordPadding is the 32-byte constant from ISO 32000-1 §7.6.3.3.
 var passwordPadding = []byte{
@@ -45,6 +50,7 @@ const (
 	cipherNone   cipherMethod = iota // /Identity — never encrypted
 	cipherRC4                        // /V2 (RC4 up to 128-bit)
 	cipherAES128                     // /AESV2
+	cipherAES256                     // /AESV3
 )
 
 // SecurityHandler holds everything needed to decrypt a document's streams
@@ -61,10 +67,10 @@ type SecurityHandler struct {
 }
 
 // NewSecurityHandler parses the /Encrypt dictionary and the trailer /ID,
-// verifies the empty user password, and returns a handler that can decrypt
-// strings and streams. Returns ErrEncrypted if the scheme is unsupported or
-// the empty password does not open the document.
-func NewSecurityHandler(encrypt Dictionary, id []byte) (*SecurityHandler, error) {
+// verifies the blank user password and then password (if non-empty), and
+// returns a handler that can decrypt strings and streams. Returns ErrEncrypted
+// if the scheme is unsupported or neither password opens the document.
+func NewSecurityHandler(encrypt Dictionary, id, password []byte) (*SecurityHandler, error) {
 	h := &SecurityHandler{EncryptMeta: true}
 
 	if v, ok := intFromDict(encrypt, "V"); ok {
@@ -87,7 +93,7 @@ func NewSecurityHandler(encrypt Dictionary, id []byte) (*SecurityHandler, error)
 	case 1, 2:
 		h.StreamCipher = cipherRC4
 		h.StringCipher = cipherRC4
-	case 4:
+	case 4, 5:
 		stmF, _ := encrypt[Name("StmF")].(Name)
 		strF, _ := encrypt[Name("StrF")].(Name)
 		eff, _ := encrypt[Name("EFF")].(Name)
@@ -97,14 +103,25 @@ func NewSecurityHandler(encrypt Dictionary, id []byte) (*SecurityHandler, error)
 		if eff != "" {
 			h.EmbedCipher = resolveCipher(cf, eff)
 		}
-	case 5:
-		return nil, fmt.Errorf("%w: V=5/R=6 (AES-256) not yet supported", ErrEncrypted)
 	default:
 		return nil, fmt.Errorf("%w: /V=%d unsupported", ErrEncrypted, h.V)
 	}
 
 	if filter, _ := encrypt[Name("Filter")].(Name); filter != "" && filter != "Standard" {
 		return nil, fmt.Errorf("%w: /Filter=%s (only Standard supported)", ErrEncrypted, filter)
+	}
+
+	if h.V == 5 {
+		if h.R != 6 {
+			return nil, fmt.Errorf("%w: V=5 R=%d unsupported (only R=6)", ErrEncrypted, h.R)
+		}
+		h.KeyLength = 256
+		key, err := openAES256(encrypt, password)
+		if err != nil {
+			return nil, err
+		}
+		h.FileKey = key
+		return h, nil
 	}
 
 	oVal, err := stringBytes(encrypt[Name("O")])
@@ -120,13 +137,94 @@ func NewSecurityHandler(encrypt Dictionary, id []byte) (*SecurityHandler, error)
 		return nil, fmt.Errorf("%w: missing /P", ErrEncrypted)
 	}
 
-	// Try empty user password (the common Word-exporter case).
-	key := deriveFileKey(nil, oVal, int32(p), id, h.R, h.KeyLength, h.EncryptMeta) //nolint:gosec // G115: /P is a 32-bit signed flags field per spec; narrowing is intentional
-	if !verifyUserPassword(key, id, uVal, h.R) {
-		return nil, fmt.Errorf("%w: non-empty user password required", ErrEncrypted)
+	for _, pw := range passwordCandidates(password) {
+		key := deriveFileKey(pw, oVal, int32(p), id, h.R, h.KeyLength, h.EncryptMeta) //nolint:gosec // G115: /P is a 32-bit signed flags field per spec; narrowing is intentional
+		if verifyUserPassword(key, id, uVal, h.R) {
+			h.FileKey = key
+			return h, nil
+		}
 	}
-	h.FileKey = key
-	return h, nil
+	return nil, errBadPassword(password)
+}
+
+// passwordCandidates lists the passwords to try, in order: blank, then the
+// caller's.
+func passwordCandidates(password []byte) [][]byte {
+	if len(password) == 0 {
+		return [][]byte{nil}
+	}
+	return [][]byte{nil, password}
+}
+
+func errBadPassword(password []byte) error {
+	if len(password) == 0 {
+		return fmt.Errorf("%w: user password required", ErrEncrypted)
+	}
+	return fmt.Errorf("%w: wrong password", ErrEncrypted)
+}
+
+// openAES256 implements Algorithm 2.A for the user password (ISO 32000-2
+// §7.6.4.3.3): it checks the password against /U and unwraps the file key
+// from /UE.
+func openAES256(encrypt Dictionary, password []byte) ([]byte, error) {
+	u, err := stringBytes(encrypt[Name("U")])
+	if err != nil || len(u) < 48 {
+		return nil, fmt.Errorf("%w: missing or short /U", ErrEncrypted)
+	}
+	ue, err := stringBytes(encrypt[Name("UE")])
+	if err != nil || len(ue) < 32 {
+		return nil, fmt.Errorf("%w: missing or short /UE", ErrEncrypted)
+	}
+
+	for _, pw := range passwordCandidates(password) {
+		// shortcut: no SASLprep normalisation, only the 127-byte truncation; add it if non-ASCII passwords fail.
+		pw = pw[:min(len(pw), 127)]
+		if !bytes.Equal(hashR6(pw, u[32:40], nil), u[:32]) {
+			continue
+		}
+		block, err := aes.NewCipher(hashR6(pw, u[40:48], nil))
+		if err != nil {
+			return nil, fmt.Errorf("%w: aes.NewCipher: %v", ErrEncrypted, err)
+		}
+		key := make([]byte, 32)
+		cipher.NewCBCDecrypter(block, make([]byte, aes.BlockSize)).CryptBlocks(key, ue[:32])
+		return key, nil
+	}
+	return nil, errBadPassword(password)
+}
+
+// hashR6 is Algorithm 2.B (ISO 32000-2 §7.6.4.3.4).
+func hashR6(password, salt, udata []byte) []byte {
+	sum := sha256.Sum256(bytes.Join([][]byte{password, salt, udata}, nil))
+	k := sum[:]
+
+	for round := 1; ; round++ {
+		k1 := bytes.Repeat(bytes.Join([][]byte{password, k, udata}, nil), 64)
+		block, _ := aes.NewCipher(k[:16]) // k is always >= 32 bytes
+		e := make([]byte, len(k1))
+		cipher.NewCBCEncrypter(block, k[16:32]).CryptBlocks(e, k1)
+
+		// The first 16 bytes as a big-endian number mod 3 equal their byte sum mod 3.
+		n := 0
+		for _, b := range e[:16] {
+			n += int(b)
+		}
+		switch n % 3 {
+		case 0:
+			s := sha256.Sum256(e)
+			k = s[:]
+		case 1:
+			s := sha512.Sum384(e)
+			k = s[:]
+		default:
+			s := sha512.Sum512(e)
+			k = s[:]
+		}
+
+		if round >= 64 && int(e[len(e)-1]) <= round-32 {
+			return k[:32]
+		}
+	}
 }
 
 // resolveCipher looks up /CF[name]/CFM and maps it to our cipherMethod.
@@ -143,6 +241,8 @@ func resolveCipher(cf Dictionary, name Name) cipherMethod {
 		return cipherRC4
 	case "AESV2":
 		return cipherAES128
+	case "AESV3":
+		return cipherAES256
 	case "None":
 		return cipherNone
 	default:
@@ -278,6 +378,9 @@ func (h *SecurityHandler) decrypt(data []byte, objNum, genNum int, method cipher
 	case cipherAES128:
 		key := h.ObjectKey(objNum, genNum, method)
 		return aesDecrypt(key, data)
+	case cipherAES256:
+		// AESV3 uses the file key directly, with no per-object derivation.
+		return aesDecrypt(h.FileKey, data)
 	default:
 		return nil, fmt.Errorf("%w: unknown crypt method", ErrEncrypted)
 	}
@@ -329,14 +432,13 @@ func stripPKCS7(data []byte, blockSize int) ([]byte, error) {
 }
 
 // stringBytes extracts raw bytes from a StringLiteral or HexString.
-// HexStrings are already stored decoded in our tokenizer (as raw bytes in a
-// string container), so both types just expose their underlying bytes.
+// A HexString holds its hex digits as written, so it is decoded here.
 func stringBytes(o Object) ([]byte, error) {
 	switch s := o.(type) {
 	case StringLiteral:
 		return []byte(s), nil
 	case HexString:
-		return []byte(s), nil
+		return hexBytes(s)
 	case nil:
 		return nil, fmt.Errorf("nil")
 	default:
@@ -353,4 +455,18 @@ func intFromDict(d Dictionary, key string) (int, bool) {
 		return int(v), true
 	}
 	return 0, false
+}
+
+// hexBytes decodes the digits of a HexString; an odd digit count is padded
+// with a trailing 0 (ISO 32000-1 §7.3.4.3).
+func hexBytes(s HexString) ([]byte, error) {
+	digits := string(s)
+	if len(digits)%2 == 1 {
+		digits += "0"
+	}
+	b, err := hex.DecodeString(digits)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid hex string: %v", ErrEncrypted, err)
+	}
+	return b, nil
 }

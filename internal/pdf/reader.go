@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -24,13 +25,23 @@ type Reader struct {
 	XrefTable map[int]XrefEntry
 	Root      Dictionary
 	// Security is non-nil when the document is encrypted AND we successfully
-	// opened it with the empty user password. All strings and stream data
-	// read through ReadObject are decrypted before being returned.
+	// opened it with the blank or the supplied user password. All strings and
+	// stream data read through ReadObject are decrypted before being returned.
 	Security *SecurityHandler
+
+	password []byte
+}
+
+// ReaderOption configures NewReader.
+type ReaderOption func(*Reader)
+
+// WithPassword sets the user password tried after the blank one.
+func WithPassword(password string) ReaderOption {
+	return func(r *Reader) { r.password = []byte(password) }
 }
 
 // NewReader creates a new PDF reader
-func NewReader(path string) (*Reader, error) {
+func NewReader(path string, opts ...ReaderOption) (*Reader, error) {
 	f, err := os.Open(path) //nolint:gosec // G304: Path is user-provided, intentional for file reading library
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s: %w", path, err)
@@ -46,6 +57,9 @@ func NewReader(path string) (*Reader, error) {
 		f:         f,
 		size:      info.Size(),
 		XrefTable: make(map[int]XrefEntry),
+	}
+	for _, opt := range opts {
+		opt(r)
 	}
 
 	if err := r.readTrailer(); err != nil {
@@ -188,7 +202,7 @@ func (r *Reader) initSecurity() error {
 		docID, _ = stringBytes(idArr[0])
 	}
 
-	handler, err := NewSecurityHandler(encryptDict, docID)
+	handler, err := NewSecurityHandler(encryptDict, docID, r.password)
 	if err != nil {
 		return err
 	}
@@ -583,11 +597,15 @@ func (r *Reader) decryptObject(obj Object, objNum, genNum int) (Object, error) {
 		}
 		return StringLiteral(plain), nil
 	case HexString:
-		plain, err := r.Security.DecryptString([]byte(v), objNum, genNum)
+		raw, err := hexBytes(v)
 		if err != nil {
 			return nil, err
 		}
-		return HexString(plain), nil
+		plain, err := r.Security.DecryptString(raw, objNum, genNum)
+		if err != nil {
+			return nil, err
+		}
+		return HexString(hex.EncodeToString(plain)), nil
 	case Array:
 		out := make(Array, len(v))
 		for i, elem := range v {

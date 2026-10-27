@@ -15,7 +15,7 @@ func TestCLIFlags(t *testing.T) {
 	want := []string{
 		"debug", "exclude-bottom", "exclude-top", "help", "model-path",
 		"no-ocr", "no-onnx", "ocr-det-model-path", "ocr-dict-path",
-		"ocr-rec-model-path", "runtime-path", "version",
+		"ocr-rec-model-path", "password", "runtime-path", "version",
 	}
 
 	var got []string
@@ -45,5 +45,41 @@ func TestConvertPDFToMarkdown_MissingFile(t *testing.T) {
 	_, err := convertPDFToMarkdown(filepath.Join(t.TempDir(), "nope.pdf"), "", convertOptions{})
 	if err == nil {
 		t.Fatal("convertPDFToMarkdown() error = nil, want error for missing file")
+	}
+}
+
+func TestConvertPDFToMarkdown_EncryptedPDF(t *testing.T) {
+	pdf := filepath.Join("..", "..", "internal", "extractor", "testdata", "encrypted", "aes256_R6.pdf")
+
+	md, err := convertPDFToMarkdown(pdf, "", convertOptions{password: "secret"})
+	if err != nil {
+		t.Fatalf("convertPDFToMarkdown() error = %v", err)
+	}
+	if !strings.Contains(md, "Hello encrypted pdf2md") {
+		t.Errorf("markdown = %q, want the decrypted text", md)
+	}
+
+	if _, err := convertPDFToMarkdown(pdf, "", convertOptions{}); err == nil {
+		t.Error("convertPDFToMarkdown() without password: error = nil, want error")
+	}
+}
+
+func TestPasswordFlagAndEnv(t *testing.T) {
+	t.Cleanup(func() { CLI.Password = "" })
+	t.Setenv("PDF2MD_PASSWORD", "from-env")
+
+	k := kong.Must(&CLI)
+	if _, err := k.Parse([]string{"in.pdf"}); err != nil {
+		t.Fatal(err)
+	}
+	if CLI.Password != "from-env" {
+		t.Errorf("Password = %q, want the environment value", CLI.Password)
+	}
+
+	if _, err := k.Parse([]string{"--password=from-flag", "in.pdf"}); err != nil {
+		t.Fatal(err)
+	}
+	if CLI.Password != "from-flag" {
+		t.Errorf("Password = %q, want the flag to win over the environment", CLI.Password)
 	}
 }

@@ -169,17 +169,17 @@ func TestDecryptStream_AES128Roundtrip(t *testing.T) {
 	}
 }
 
-// TestNewSecurityHandler_UnsupportedV rejects V=5 with ErrEncrypted.
-func TestNewSecurityHandler_UnsupportedV(t *testing.T) {
+// TestNewSecurityHandler_UnsupportedRevision rejects V=5 R=5 with ErrEncrypted.
+func TestNewSecurityHandler_UnsupportedRevision(t *testing.T) {
 	dict := Dictionary{
 		Name("V"):      Integer(5),
-		Name("R"):      Integer(6),
+		Name("R"):      Integer(5),
 		Name("Length"): Integer(256),
 		Name("O"):      StringLiteral(bytes.Repeat([]byte{0xAA}, 48)),
 		Name("U"):      StringLiteral(bytes.Repeat([]byte{0xBB}, 48)),
 		Name("P"):      Integer(-1),
 	}
-	_, err := NewSecurityHandler(dict, bytes.Repeat([]byte{0xCC}, 16))
+	_, err := NewSecurityHandler(dict, bytes.Repeat([]byte{0xCC}, 16), nil)
 	if !errors.Is(err, ErrEncrypted) {
 		t.Fatalf("want ErrEncrypted, got %v", err)
 	}
@@ -196,7 +196,7 @@ func TestNewSecurityHandler_NonStandardFilter(t *testing.T) {
 		Name("U"):      StringLiteral(bytes.Repeat([]byte{0xBB}, 32)),
 		Name("P"):      Integer(-1),
 	}
-	_, err := NewSecurityHandler(dict, bytes.Repeat([]byte{0xCC}, 16))
+	_, err := NewSecurityHandler(dict, bytes.Repeat([]byte{0xCC}, 16), nil)
 	if !errors.Is(err, ErrEncrypted) {
 		t.Fatalf("want ErrEncrypted, got %v", err)
 	}
