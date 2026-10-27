@@ -149,6 +149,7 @@ PDF to image rendering for ONNX input:
 
 - **renderer.go** - `PageRenderer` interface and configuration
 - **renderer_pdfium.go** - go-pdfium WebAssembly/Wazero implementation
+  - Open the PDF with `os.Open` and pass `FileReader`, never `FilePath`: Wazero rejects Windows volumes (`D:\`), which silently disabled ONNX/OCR on Windows (#9).
 - Cross-platform: WebAssembly runtime, no native dependencies
 
 ### 3d. OCR (`internal/ocr/`)
@@ -279,6 +280,9 @@ Test PDFs go in `testdata/`. Tests use the `_test.go` convention:
 - `analyzer_fuzz_test.go` - Fuzz testing for robustness
 - `builder_test.go` - Markdown generation tests
 - `reader_test.go` - PDF parsing tests
+
+- `GOOS=windows go build ./...` fails locally (onnxruntime cgo); check Windows with `GOOS=windows go build ./internal/render/`. CI's `windows-render` job runs `go test ./internal/render/` on `windows-latest`.
+- Workflow actions are pinned by commit SHA with a `# vX.Y.Z` comment; get the SHA with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`.
 
 ## Library Usage
 
