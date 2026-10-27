@@ -8,8 +8,9 @@ A fast, single-binary PDF to Markdown converter written in Go. Designed for AI e
 
 ## How it Works
 
-- **Single Binary** - Zero dependencies, just download and run
-- **Custom PDF Parser** - Pure Go implementation, no CGO or external libraries required
+- **Single Binary** - Download and run; the core PDF to Markdown path has no native dependencies
+- **Custom PDF Parser** - Pure Go implementation, no CGO or external libraries required for the core path
+- **Optional ML** - ONNX layout detection and OCR for scanned pages are opt-in and need `libonnxruntime` on the host (see below)
 - **Column Detection** - Handles multi-column layouts (academic papers, newspapers)
 - **Smart Layout Analysis** - Preserves reading order and document structure
 - **Header Detection** - Automatically identifies H1-H6 based on font size or numbering
@@ -47,6 +48,31 @@ Save to a file:
 ```bash
 ./pdf2md input.pdf output.md
 ```
+
+### Options
+
+| Flag | Purpose |
+|------|---------|
+| `-V`, `--version` | Print version and exit |
+| `--debug` | Enable debug logging |
+| `--exclude-top=N` / `--exclude-bottom=N` | Skip a header / footer region of N points |
+| `--no-onnx` | Disable ONNX layout detection (rule-based only) |
+| `--model-path=FILE` | ONNX layout model (auto-downloaded if omitted) |
+| `--runtime-path=FILE` | ONNX Runtime library (auto-detected if omitted) |
+| `--no-ocr` | Disable the OCR fallback on image-only pages |
+| `--ocr-det-model-path=FILE` / `--ocr-rec-model-path=FILE` | OCR detection / recognition models |
+| `--ocr-dict-path=FILE` | OCR character dictionary (only for non-Latin models) |
+
+Environment variables: `PDF2MD_MODEL_PATH`, `PDF2MD_OCR_DET_PATH`, `PDF2MD_OCR_REC_PATH`,
+`PDF2MD_OCR_DICT_PATH`, `ORT_LIB_PATH`. OCR models are not downloaded automatically; see
+[docs/ocr-setup.md](docs/ocr-setup.md). Without `libonnxruntime` or the models, pdf2md falls back
+to rule-based analysis and skips OCR without failing.
+
+### Stability
+
+From 1.0, the command-line flags and environment variables above, and the Markdown written to
+stdout or the output file, follow semantic versioning: a rename or removal needs a new major
+version. The Go packages live under `internal/` and carry no compatibility promise.
 
 ## Architecture
 
@@ -91,11 +117,22 @@ pdf2md uses a modular pipeline architecture:
 - [x] Link extraction
 - [x] Vector graphics extraction
 
-### Phase 4: Advanced (Planned)
+### Phase 4: Advanced
 
-- [ ] OCR support for scanned PDFs
+- [x] OCR support for scanned PDFs (ONNX, opt-in)
+- [x] ONNX layout detection (DocLayout-YOLO, opt-in)
 - [x] Configurable exclusion zones (headers/footers)
 - [x] Custom formatting rules
+
+### Planned for 1.0
+
+- [ ] AES-256 (V=5/R=6) encryption and non-empty user passwords (`--password`)
+- [ ] Golden-file regression corpus
+
+### After 1.0
+
+- [ ] CCITT G4 and JBIG2 image decoders (currently `ErrFilterUnsupported`)
+- [ ] Automatic download of OCR models
 
 ## Development
 
