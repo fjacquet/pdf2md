@@ -104,14 +104,19 @@ Custom pure Go PDF parser that handles:
   - **No-op**: `/Crypt` — decryption happens upstream in the security handler,
     so the stream is plaintext by the time it reaches the filter dispatch
 - Document encryption (`crypt.go`):
-  - **Supported**: standard security handler V=1/V=2 (RC4 40-/128-bit, R=2/3)
-    and V=4 R=4 (RC4 or AES-128, `/CFM` = `V2` or `AESV2`)
-  - **Constraint**: only the empty user password is tried — covers the common
-    "owner-password-only" PDFs exported by Word. Non-empty user passwords and
-    V=5/R=6 (AES-256) return `ErrEncrypted`.
+  - **Supported**: standard security handler V=1/V=2 (RC4 40-/128-bit, R=2/3),
+    V=4 R=4 (RC4 or AES-128, `/CFM` = `V2` or `AESV2`) and V=5 R=6 (AES-256,
+    `/CFM` = `AESV3`, hash algorithm 2.B).
+  - **Passwords**: the blank password is tried first, then the user password
+    from `--password` / `PDF2MD_PASSWORD` (`pdf.WithPassword`). Errors are
+    `ErrEncrypted` with "user password required" or "wrong password". Owner
+    passwords, V=5 R=5 and public-key handlers return `ErrEncrypted`.
   - Wired automatically when the trailer contains `/Encrypt`; strings and
     stream data are decrypted inside `Reader.ReadObject`. Metadata streams
     are exempt when `/EncryptMetadata false`.
+  - `HexString` holds the hex digits as written; decode with `hexBytes`.
+  - Encrypted fixtures in `internal/extractor/testdata/encrypted/` come from
+    qpdf (pikepdf, `static_id=True`); user password `secret`, owner `owner`.
 
 ### 2. Extraction Layer (`internal/extractor/`)
 

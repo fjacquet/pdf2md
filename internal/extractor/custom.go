@@ -25,8 +25,8 @@ type CustomExtractor struct {
 }
 
 // NewCustomExtractor creates a new custom extractor
-func NewCustomExtractor(path string) (*CustomExtractor, error) {
-	reader, err := pdf.NewReader(path)
+func NewCustomExtractor(path string, opts ...pdf.ReaderOption) (*CustomExtractor, error) {
+	reader, err := pdf.NewReader(path, opts...)
 	if err != nil {
 		return nil, err
 	}

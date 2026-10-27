@@ -56,6 +56,7 @@ Save to a file:
 | `-V`, `--version` | Print version and exit |
 | `--debug` | Enable debug logging |
 | `--exclude-top=N` / `--exclude-bottom=N` | Skip a header / footer region of N points |
+| `--password=PW` | User password for an encrypted PDF (or set `PDF2MD_PASSWORD`, which keeps it out of the shell history); the blank password is always tried first |
 | `--no-onnx` | Disable ONNX layout detection (rule-based only) |
 | `--model-path=FILE` | ONNX layout model (auto-downloaded if omitted) |
 | `--runtime-path=FILE` | ONNX Runtime library (auto-detected if omitted) |
@@ -64,7 +65,7 @@ Save to a file:
 | `--ocr-dict-path=FILE` | OCR character dictionary (only for non-Latin models) |
 
 Environment variables: `PDF2MD_MODEL_PATH`, `PDF2MD_OCR_DET_PATH`, `PDF2MD_OCR_REC_PATH`,
-`PDF2MD_OCR_DICT_PATH`, `ORT_LIB_PATH`. OCR models are not downloaded automatically; see
+`PDF2MD_OCR_DICT_PATH`, `PDF2MD_PASSWORD`, `ORT_LIB_PATH`. OCR models are not downloaded automatically; see
 [docs/ocr-setup.md](docs/ocr-setup.md). Without `libonnxruntime` or the models, pdf2md falls back
 to rule-based analysis and skips OCR without failing.
 
@@ -126,7 +127,7 @@ pdf2md uses a modular pipeline architecture:
 
 ### Planned for 1.0
 
-- [ ] AES-256 (V=5/R=6) encryption and non-empty user passwords (`--password`)
+- [x] AES-256 (V=5/R=6) encryption and non-empty user passwords (`--password`)
 - [ ] Golden-file regression corpus
 
 ### After 1.0

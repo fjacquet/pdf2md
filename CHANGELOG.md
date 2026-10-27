@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `--password` flag and `PDF2MD_PASSWORD` for encrypted PDFs, and AES-256 (V=5/R=6) decryption. Owner passwords and R=5 are not supported.
 - Golden-file tests for synthetic layouts (`cmd/pdf2md/testdata/golden`) and a READoc score baseline (`benchmark_baseline.json`) checked by `cmd/benchmark`.
 - `TestCLIFlags` freezes the public CLI flag set; tests for `cmd/pdf2md` and `internal/modelcache`.
 - **High Fidelity Extraction**: Implemented a custom PDF parser (`internal/pdf`) for accurate text, font, and image extraction without CGO.
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Encrypted PDFs whose `/O`, `/U` or `/ID` were written as hex strings (e.g. by qpdf) could never be opened: hex strings are now decoded before use, and hex strings inside encrypted objects are decrypted from their decoded bytes.
 - Fixed list item misclassification.
 - Fixed "missing bullets" issue by leveraging custom parser's text operators.
 - Fixed compilation errors in `internal/pdf` during refactoring.

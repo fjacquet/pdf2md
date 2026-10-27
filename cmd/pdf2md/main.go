@@ -15,6 +15,7 @@ import (
 	"github.com/fjacquet/pdf2md/internal/markdown"
 	"github.com/fjacquet/pdf2md/internal/ocr"
 	"github.com/fjacquet/pdf2md/internal/onnx"
+	"github.com/fjacquet/pdf2md/internal/pdf"
 	"github.com/fjacquet/pdf2md/internal/render"
 )
 
@@ -32,6 +33,7 @@ var CLI struct {
 	Debug         bool    `help:"Enable debug logging."`
 	ExcludeTop    float64 `name:"exclude-top" help:"Height from top to exclude (e.g. for headers)." default:"0"`
 	ExcludeBottom float64 `name:"exclude-bottom" help:"Height from bottom to exclude (e.g. for footers)." default:"0"`
+	Password      string  `name:"password" env:"PDF2MD_PASSWORD" help:"User password for an encrypted PDF (the blank password is always tried first)."`
 
 	// ONNX layout detection options
 	NoONNX      bool   `name:"no-onnx" help:"Disable ONNX-based layout detection (uses rule-based only)."`
@@ -77,6 +79,7 @@ func main() {
 	opts := convertOptions{
 		excludeTop:      CLI.ExcludeTop,
 		excludeBottom:   CLI.ExcludeBottom,
+		password:        CLI.Password,
 		enableONNX:      !CLI.NoONNX,
 		modelPath:       CLI.ModelPath,
 		runtimePath:     CLI.RuntimePath,
@@ -108,6 +111,7 @@ func main() {
 type convertOptions struct {
 	excludeTop      float64
 	excludeBottom   float64
+	password        string
 	enableONNX      bool
 	modelPath       string
 	runtimePath     string
@@ -128,7 +132,7 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 	defer func() { _ = file.Close() }()
 
 	// Step 1: Initialize Extractor (using custom parser)
-	ext, err := extractor.NewCustomExtractor(inputPath)
+	ext, err := extractor.NewCustomExtractor(inputPath, pdf.WithPassword(opts.password))
 	if err != nil {
 		return "", fmt.Errorf("failed to create extractor: %w", err)
 	}
@@ -137,7 +141,9 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 	// Step 2: Initialize PDF renderer — needed for both ONNX layout and OCR.
 	var renderer render.PageRenderer
 	if opts.enableONNX || opts.enableOCR {
-		renderer, err = render.NewPdfiumRenderer(inputPath, render.RenderConfigForONNX())
+		renderConfig := render.RenderConfigForONNX()
+		renderConfig.Password = opts.password
+		renderer, err = render.NewPdfiumRenderer(inputPath, renderConfig)
 		if err != nil {
 			logger.Warn("Failed to initialize PDF renderer, ONNX/OCR disabled", "error", err)
 			renderer = nil

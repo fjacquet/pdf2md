@@ -48,6 +48,9 @@ type RenderConfig struct {
 
 	// BackgroundColor for transparent pages (default: white)
 	BackgroundColor [3]uint8
+
+	// Password opens encrypted documents (empty for none).
+	Password string
 }
 
 // DefaultRenderConfig returns the default rendering configuration.

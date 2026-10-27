@@ -81,10 +81,14 @@ func NewPdfiumRenderer(pdfPath string, config *RenderConfig) (*PdfiumRenderer, e
 		return nil, fmt.Errorf("failed to open PDF: %w", err)
 	}
 
-	doc, err := instance.OpenDocument(&requests.OpenDocument{
+	open := &requests.OpenDocument{
 		FileReader:     f,
 		FileReaderSize: info.Size(),
-	})
+	}
+	if config.Password != "" {
+		open.Password = &config.Password
+	}
+	doc, err := instance.OpenDocument(open)
 	if err != nil {
 		_ = f.Close()
 		_ = instance.Close()
