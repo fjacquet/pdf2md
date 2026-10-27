@@ -3,16 +3,30 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
+// baseline records per-document scores and the READoc commit they were measured on.
+type baseline struct {
+	Dataset string             `json:"dataset"`
+	Scores  map[string]float64 `json:"scores"`
+}
+
 func main() {
+	baselinePath := flag.String("baseline", "benchmark_baseline.json", "baseline scores file")
+	updateBaseline := flag.Bool("update-baseline", false, "write the current scores as the new baseline")
+	tolerance := flag.Float64("tolerance", 0.02, "allowed score drop per document before failing")
+	flag.Parse()
+
 	// Define paths
 	dataDir := "READoc/data"
 	outputDir := "READoc/output/pdf2md"
@@ -67,7 +81,7 @@ func main() {
 		}
 
 		// Run pdf2md
-		cmd := exec.Command("./pdf2md", pdfPath, outPath) //nolint:gosec // Benchmark tool, paths are from local filesystem walk
+		cmd := exec.Command("./pdf2md", "--no-onnx", "--no-ocr", pdfPath, outPath) //nolint:gosec // Benchmark tool, paths are from local filesystem walk
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
@@ -127,6 +141,65 @@ func main() {
 	} else {
 		fmt.Println("No files processed.")
 	}
+
+	scores := make(map[string]float64, len(results))
+	for _, r := range results {
+		scores[filepath.ToSlash(r.File)] = r.Score
+	}
+	if *updateBaseline {
+		if len(scores) == 0 {
+			log.Fatal("Refusing to write an empty baseline")
+		}
+		if err := writeBaseline(*baselinePath, scores); err != nil {
+			log.Fatalf("Failed to write baseline: %v", err)
+		}
+		fmt.Printf("Baseline written to %s\n", *baselinePath)
+		return
+	}
+	if regressions := checkBaseline(*baselinePath, scores, *tolerance); len(regressions) > 0 {
+		fmt.Printf("\nRegressions against %s:\n  %s\n", *baselinePath, strings.Join(regressions, "\n  "))
+		os.Exit(1)
+	}
+}
+
+func writeBaseline(path string, scores map[string]float64) error {
+	// The dataset is a separate git clone; record which commit the scores belong to.
+	rev, _ := exec.Command("git", "-C", "READoc", "rev-parse", "HEAD").Output() //nolint:gosec // fixed arguments
+	data, err := json.MarshalIndent(baseline{Dataset: strings.TrimSpace(string(rev)), Scores: scores}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o600)
+}
+
+// checkBaseline reports documents whose score fell more than tol below the
+// baseline. A missing baseline file is not an error: there is nothing to compare.
+func checkBaseline(path string, scores map[string]float64, tol float64) []string {
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path comes from a CLI flag of a local tool
+	if err != nil {
+		fmt.Printf("No baseline at %s (run with -update-baseline to create one)\n", path)
+		return nil
+	}
+	var b baseline
+	if err := json.Unmarshal(data, &b); err != nil {
+		log.Fatalf("Invalid baseline %s: %v", path, err)
+	}
+	return findRegressions(scores, b.Scores, tol)
+}
+
+func findRegressions(scores, base map[string]float64, tol float64) []string {
+	var out []string
+	for file, want := range base {
+		got, ok := scores[file]
+		switch {
+		case !ok:
+			out = append(out, fmt.Sprintf("%s: missing (baseline %.4f)", file, want))
+		case got < want-tol:
+			out = append(out, fmt.Sprintf("%s: %.4f < baseline %.4f", file, got, want))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func calculateSimilarity(s1, s2 string) float64 {
