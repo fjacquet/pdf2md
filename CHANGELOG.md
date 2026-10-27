@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `TestCLIFlags` freezes the public CLI flag set; tests for `cmd/pdf2md` and `internal/modelcache`.
 - **High Fidelity Extraction**: Implemented a custom PDF parser (`internal/pdf`) for accurate text, font, and image extraction without CGO.
 - **Advanced Layout Analysis**: Implemented Recursive XY-Cut algorithm for robust multi-column detection.
 - **Image Support**: Extraction of raster images and vector graphics to Markdown.
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- README: ML features documented as opt-in (they need `libonnxruntime`), flag and environment variable tables, stability policy, current roadmap.
 - **Architecture**: Refactored into `cmd/`, `internal/`, `pkg/` structure.
 - **Text Merging**: Improved paragraph merging with style awareness (bold/italic).
 - **Header Detection**: Refined heuristics using font size metadata.
