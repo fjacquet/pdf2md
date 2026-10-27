@@ -9,3 +9,14 @@ jobs:
     uses: fjacquet/ci/.github/workflows/go-ci.yml@v1
   security:
     uses: fjacquet/ci/.github/workflows/go-security.yml@v1
+  # go-pdfium runs PDFium in Wazero, which rejects Windows volume paths; guard #9.
+  windows-render:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test ./internal/render/
