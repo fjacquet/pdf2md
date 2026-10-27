@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Golden-file tests for synthetic layouts (`cmd/pdf2md/testdata/golden`) and a READoc score baseline (`benchmark_baseline.json`) checked by `cmd/benchmark`.
 - `TestCLIFlags` freezes the public CLI flag set; tests for `cmd/pdf2md` and `internal/modelcache`.
 - **High Fidelity Extraction**: Implemented a custom PDF parser (`internal/pdf`) for accurate text, font, and image extraction without CGO.
 - **Advanced Layout Analysis**: Implemented Recursive XY-Cut algorithm for robust multi-column detection.

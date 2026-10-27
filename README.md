@@ -157,6 +157,16 @@ pdf2md/
 go test ./...
 ```
 
+Golden Markdown files for synthetic layouts live in `cmd/pdf2md/testdata/golden`; after an intended
+output change, refresh them with `go test ./cmd/pdf2md -run TestGolden -update` and review the diff.
+
+### Benchmark
+
+With a [READoc](https://github.com/icip-cas/READoc) clone in `./READoc` and the binary built
+(`go build -o pdf2md ./cmd/pdf2md`), `make benchmark` scores the output against the ground truth
+and fails if any document drops more than 0.02 below `benchmark_baseline.json`. After an intended
+improvement, run `go run cmd/benchmark/main.go -update-baseline`.
+
 ## License
 
 MIT License - See LICENSE file for details
