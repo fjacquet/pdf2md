@@ -19,7 +19,8 @@
 - CLI flags and env vars are frozen (`cmd/pdf2md/main_test.go:TestCLIFlags`); add none.
 - Benchmark mode is `--no-onnx --no-ocr`. Target: average ≥ `pdftotext` average on the same scorer.
 - One PR per task. The average must not drop. The PR lists the documents that moved and why. Refresh `benchmark_baseline.json` with `-update-baseline`, merge only on green CI.
-- Golden files (`cmd/pdf2md/testdata/golden/`) are updated with `go test ./cmd/pdf2md -run TestGolden -update` only when the new output is more correct. Say so in the commit.
+- Golden files (`cmd/pdf2md/testdata/golden/`) are updated with `go test ./cmd/pdf2md -run TestGolden -update` when the diff is explained by the task's spec change. The commit states the explanation.
+- Each PR adds its own entry under Unreleased in `CHANGELOG.md`.
 - Lint: `golangci-lint run --fix ./...` first, then `make lint`. gosec suppressions use the inline `//nolint:gosec // Gxxx: reason` style.
 - Commits end with the session's `Co-Authored-By` and `Claude-Session` trailers.
 
@@ -87,7 +88,7 @@ func TestWordF1(t *testing.T) {
   - `func (in *Interpreter) showString(raw []byte) (text string, width float64)`: walks the codes, appends decoded text, advances `in.Tm` per glyph, and returns the advance sum in user space.
   - `func (fm *FontManager) Child(resources Dictionary) *FontManager`: a copy of `fm.Fonts` overlaid with fonts loaded from `resources`.
   - `TextBlock.RenderMode` (0–7, the `Tr` value).
-  - Until Task 2 lands, code splitting and widths keep using `Font.CalculateWidth` semantics through a temporary per-code helper `in.glyphWidth(code int) float64` (thousandths of em). Task 2 replaces it.
+  - Until Task 2 lands, widths go through a temporary per-code helper `in.glyphWidth(code int) float64`, in thousandths of em. It uses `Font.GetWidth` and falls back to 500 when that returns 0, when the font is unknown, or when `FontManager` is nil. Without this fallback, every font without `/Widths` collapses to zero width once the `0.25 × Tfs` estimate is gone. The golden fixtures (`cmd/pdf2md/testpdf_test.go`, standard 14 fonts without `/Widths`) are one such case. Task 2 replaces the helper.
 - Test helper (in `ops_text_test.go`):
 
 ```go
@@ -120,7 +121,11 @@ func runText(t *testing.T, content string) []types.TextBlock
   - Delete the `0.25 × Tfs` width estimate in `addTextBlock`.
 - [ ] **Step 4:** Run `go test ./internal/pdf/...`. Expected: PASS. The old `TestInterpreter_HandleTextShow` must still pass: `"A B"` comes from the −1000 rule.
 - [ ] **Step 5:** Run `go test ./...`, `make lint`, `make build`, then `go run ./cmd/benchmark`. Record per-document deltas for the PR. Expected: average ≥ 0.7726. If a document drops more than 0.02, find the compensating heuristic and name it in the PR, as the design allows.
-- [ ] **Step 5b: Position check against poppler.** Run `pdftotext -bbox-layout -f 1 -l 1 READoc/data/github/pdf/524987682.pdf -` and compare the first 20 `<word xMin=…>` values with the X of the matching pdf2md blocks. Read the blocks with a throwaway `go test` that prints `ExtractTextBlocks(1)`, and do not commit it. Poppler's Y is top-down, so `y_pdf = pageHeight − yMax`. Expected: block starts within 0.5 pt of poppler's word starts.
+- [ ] **Step 5b: Position check against poppler, per line.** Run `pdftotext -bbox-layout -f 1 -l 1 <pdf> -` on `READoc/data/github/pdf/524987682.pdf` and on `READoc/data/arxiv/pdf/2007.14922.pdf`. For the first 20 `<line>` elements, compare two pairs against the matching pdf2md block, read through a throwaway `go test` that prints `ExtractTextBlocks(1)` (not committed):
+  - the first word's `xMin` against `X`;
+  - the last word's `xMax` against `X + Width`. This pair is the one that tests the advance.
+
+  Poppler's Y is top-down, so `y_pdf = pageHeight − yMax`. Expected: both within 0.5 pt.
 - [ ] **Step 6:** Fix `docs/pdf_parser_spec.md` §3.3: list `TD` and `Tr`, and drop "partial" for `q`/`Q`/`cm`. Commit `fix(pdf): glyph advance per ISO 32000 §9.4.4, TD, Tr, form fonts`.
 
 ### Task 2: Glyph widths and code splitting (§9.6–9.7)
@@ -136,13 +141,15 @@ func runText(t *testing.T, content string) []types.TextBlock
   - `type codespace struct{ lo, hi []byte }` and `func parseCodespace(cmap []byte) []codespace`, which reads `begincodespacerange … endcodespacerange`. Task 4 reuses both.
   - `func (f *Font) Codes(raw []byte) []Code` with `type Code struct{ Value, Len int }`. Simple fonts use 1 byte. Composite fonts use the codespace of the embedded `/Encoding` CMap stream, else 2 bytes for `Identity-H`/`Identity-V`. Other predefined CMaps also get 2 bytes, with a `shortcut:` comment.
   - `func (f *Font) Width(c Code) float64`, in thousandths of em of text space. Order:
-    1. `/W` (composite) or `/Widths` at `Value−FirstChar` (simple);
-    2. `FontDescriptor /MissingWidth`;
-    3. std14 by `BaseFont` (subset prefix `ABCDEF+` stripped) via the glyph name from `Encoding`;
-    4. `/DW` (composite, default 1000);
-    5. 500.
-    For Type 3, `/Widths` values are multiplied by `FontMatrix[0]×1000`.
-  - `func (f *Font) SpaceWidth() float64`: width of the code whose Unicode is `" "` (ToUnicode or encoding), else std14 `space`, else 250.
+    - Composite fonts: `/W`, then `/DW` (default 1000).
+    - Simple fonts:
+      1. `/Widths` at `Value−FirstChar`;
+      2. `FontDescriptor /MissingWidth`;
+      3. std14 by `BaseFont` (subset prefix `ABCDEF+` stripped), via the glyph name from `Encoding`;
+      4. 500.
+    - For Type 3, `/Widths` values are multiplied by `FontMatrix[0]×1000`.
+    - Advance is horizontal only. Vertical writing (`Identity-V`, `/W2`) gets `shortcut: vertical metrics ignored, upgrade when a vertical CJK document is in the corpus`.
+  - `func (f *Font) SpaceWidth() float64`: the width of the code whose Unicode is `" "` (ToUnicode or encoding), else std14 `space`, else 250. Any result ≤ 0 or > 1000 also falls back to 250, so a zero-width space glyph cannot turn the word-gap threshold into 0.
   - A nil font (unknown `Tf` name) behaves as width 500 and space 250.
   - `in.glyphWidth` is deleted. `Font.CalculateWidth` and `FontManager.CalculateWidth` are deleted if they are no longer called.
 - [ ] **Step 1: Write failing tests**:
@@ -150,6 +157,7 @@ func runText(t *testing.T, content string) []types.TextBlock
   - `TestWidth_Type3FontMatrix`: `FontMatrix [0.01 0 0 0.01 0 0]`, Widths A = 50, so `Width == 500`.
   - `TestWidth_Std14`: `BaseFont /Helvetica`, no Widths, WinAnsi, so `Width({'A',1}) == 667` and `SpaceWidth() == 278`.
   - `TestWidth_SubsetPrefix`: `ABCDEF+Helvetica` gives the same widths.
+  - `TestSpaceWidth_ZeroWidthSpaceGlyph`: ToUnicode maps code 3 to `" "` with `/W` width 0, so `SpaceWidth() == 250`.
   - `TestWidth_UnknownFont`: `runText` with `/F9 10 Tf (AB) Tj` (F9 absent) gives `Width == 10`.
   - `TestCodes_Codespace`: codespace `<00> <80>` and `<8140> <FFFF>`, bytes `41 81 40 42` give codes `0x41/1, 0x8140/2, 0x42/1`.
   - `TestCodes_IdentityH`: `00 41 00 42` gives `0x41/2, 0x42/2`.
@@ -188,7 +196,7 @@ func runText(t *testing.T, content string) []types.TextBlock
   - Keep the hyphen and wide-gap branches unchanged.
 - [ ] **Step 4:** Run `go test ./internal/pdf/... ./internal/layout/...`. Expected: PASS. Update `TestInterpreter_HandleTextShow` only if it relied on the old −200 rule. With −1000 it still yields `"A B"`.
 - [ ] **Step 5:** Run `go test ./...`, `make lint`, `make build`, then `go run ./cmd/benchmark`. Expected: the GitHub subset's word F1 goes from 0.598 to ≥ 0.95, and `github/524987682` comes out spaced. Refresh the golden files if they got more correct.
-- [ ] **Step 6: Checkpoint.** Post the per-subset Levenshtein and word-F1 table in the PR, compared with `benchmark_pdftotext.json`.
+- [ ] **Step 6: Checkpoint.** Post the per-subset Levenshtein and word-F1 table in the PR, compared with `benchmark_pdftotext.json`. Add the link-markup penalty: re-score with `[text](url)` reduced to `text`. Measured on the current outputs: +0.031 average (GitHub +0.052, arXiv +0.010). The READoc ground truth has no URLs. If that penalty is what stands between the average and 0.861, take it to the user: it is a question of Markdown output or metric, not of extraction.
 - [ ] **Step 7:** Commit `fix: decide word spaces from glyph positions and the font's space width`.
 
 ### Task 4: Code → Unicode (§9.10)
@@ -245,4 +253,4 @@ func runText(t *testing.T, content string) []types.TextBlock
 - [ ] **Step 4:** Run `go test ./internal/layout/...`. Expected: PASS. Existing `TestSortBlocks` is unchanged, because `SortBlocks` stays.
 - [ ] **Step 5:** Measure three variants on the same commit by temporarily editing the call in `analyzer.go`, without committing the variants: (a) `SortBlocks`, (b) stream order only, (c) `OrderBlocks`. Keep the variant with the best average. On a tie within 0.005, keep the simpler one, in the order b, then c, then a. Put the three averages in the PR.
 - [ ] **Step 6:** Run `go test ./...`, `make lint`, `make build`, then `go run ./cmd/benchmark` and compare with `benchmark_pdftotext.json`. Expected: average ≥ 0.861. If not, stop and report the per-document gap to the user. Do not add thresholds.
-- [ ] **Step 7:** Refresh the golden files if they are more correct (`columns.md` should stop being a table). Update `CHANGELOG.md` (Unreleased) for Tasks 1–5, the README roadmap and `CLAUDE.md` (Layout: reading order, Technical Notes: word gap rule). Commit `feat(layout): stream-order-first reading order with XY-cut fallback`.
+- [ ] **Step 7:** Refresh the golden files if they are more correct (`columns.md` should stop being a table). Update the README roadmap and `CLAUDE.md` (Layout: reading order, Technical Notes: word gap rule). Commit `feat(layout): stream-order-first reading order with XY-cut fallback`.
