@@ -112,3 +112,51 @@ func TestReader(t *testing.T) {
 		t.Errorf("Expected /Type /Page for page 75, got %v", page75[Name("Type")])
 	}
 }
+
+func openTestPDF(t *testing.T, objs ...string) *Reader {
+	t.Helper()
+	r, err := NewReader(writeTestPDF(t, objs...))
+	if err != nil {
+		t.Fatalf("NewReader: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	return r
+}
+
+// Run alone: the failure mode is a fatal stack overflow that kills the binary.
+func TestGetPage_KidsCycle(t *testing.T) {
+	r := openTestPDF(t,
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [2 0 R] /Count 1 >>",
+	)
+	if _, err := r.GetPage(1); err == nil {
+		t.Fatal("GetPage(1) on a /Kids cycle: error = nil, want an error")
+	}
+}
+
+// §7.5.7: an object stream may not live inside another object stream.
+func TestReadObject_ObjStmInsideObjStm(t *testing.T) {
+	r := &Reader{XrefTable: map[int]XrefEntry{5: {Type: 2, StreamObjNum: 5}}}
+	if _, err := r.ReadObject(5); err == nil {
+		t.Fatal("ReadObject(5) with a self-contained object stream: error = nil, want an error")
+	}
+}
+
+// §7.7.3.4: Resources, MediaBox, CropBox and Rotate are inherited from /Pages.
+func TestGetPage_InheritsMediaBoxAndResources(t *testing.T) {
+	r := openTestPDF(t,
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Rotate 90 >>",
+		"<< /Type /Page /Parent 2 0 R >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+	)
+	page, err := r.GetPage(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"MediaBox", "Resources", "Rotate"} {
+		if page[Name(key)] == nil {
+			t.Errorf("page /%s missing, want it inherited from /Pages", key)
+		}
+	}
+}
