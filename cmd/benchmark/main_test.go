@@ -43,3 +43,23 @@ func TestWordF1(t *testing.T) {
 		}
 	}
 }
+
+func TestHeadingF1(t *testing.T) {
+	tests := []struct {
+		gen, gt   string
+		withLevel bool
+		want      float64
+	}{
+		{"# A\n## B", "# A\n## B", true, 1},
+		{"# A\n# B", "# A\n## B", true, 0.5}, // one of two pairs matches
+		{"# A\n# B", "# A\n## B", false, 1},
+		{"## [Docs](x)", "## Docs", true, 1},
+		{"", "", true, 1},
+		{"text", "# A", true, 0},
+	}
+	for _, tt := range tests {
+		if got := headingF1(tt.gen, tt.gt, tt.withLevel); math.Abs(got-tt.want) > 1e-9 {
+			t.Errorf("headingF1(%q, %q, %v) = %v, want %v", tt.gen, tt.gt, tt.withLevel, got, tt.want)
+		}
+	}
+}
