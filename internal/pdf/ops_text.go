@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/fjacquet/pdf2md/internal/types"
 )
@@ -145,9 +146,9 @@ func (in *Interpreter) handleTextShow(op string) error {
 
 		if arr, ok := arrObj.(Array); ok {
 			// Process TJ array more intelligently:
-			// - Small adjustments (< 200 units) are kerning within words
-			// - Large adjustments (>= 200 units) are word spaces
-			// Collect text and only split on large adjustments
+			// - Small adjustments are kerning within words
+			// - Adjustments wider than types.WordGapEm are word spaces
+			// Collect text and only split on word spaces
 			var textBuffer string
 			var rawBuffer string
 			startX := in.Tm[4]
@@ -164,8 +165,7 @@ func (in *Interpreter) handleTextShow(op string) error {
 				} else if n, ok := item.(Integer); ok {
 					// Adjustment value in thousandths of em
 					// Positive = move left (tightening), Negative = move right (spacing)
-					// Large negative values (< -200) typically indicate word space
-					if n < -200 {
+					if isTJWordGap(float64(n), textBuffer) {
 						// This is a word space - insert space in text
 						textBuffer += " "
 					}
@@ -174,7 +174,7 @@ func (in *Interpreter) handleTextShow(op string) error {
 					in.Tm[4] += adj * in.Tm[0]
 					in.Tm[5] += adj * in.Tm[1]
 				} else if f, ok := item.(Real); ok {
-					if f < -200 {
+					if isTJWordGap(float64(f), textBuffer) {
 						textBuffer += " "
 					}
 					adj := -float64(f) / 1000.0 * in.State.Tfs
@@ -345,4 +345,10 @@ func (in *Interpreter) decodeText(s string) string {
 		return in.FontManager.DecodeString(in.State.Tf, s)
 	}
 	return s
+}
+
+// isTJWordGap reports whether a TJ offset (thousandths of em, negative moves
+// right) is a word space, unless text already ends with one.
+func isTJWordGap(offset float64, text string) bool {
+	return -offset/1000 > types.WordGapEm && !strings.HasSuffix(text, " ")
 }

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 // MergeDropCaps merges drop cap letters with their following text
@@ -84,10 +86,8 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 		if yDiff < 2.0 {
 			gap := next.X - (current.X + current.Width)
 
-			// Use a more lenient threshold for merging
-			// Small gaps (< 30% of font size) should merge without separator
-			// This helps with kerned text and special styling
-			threshold := current.FontSize * 0.3
+			// Gaps narrower than a word space are kerning or styling: merge without separator
+			threshold := current.FontSize * types.WordGapEm
 			if threshold == 0 {
 				threshold = 2.0
 			}

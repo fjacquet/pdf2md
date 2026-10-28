@@ -1,5 +1,10 @@
 package types //nolint:revive // Package name "types" is a common pattern for shared types
 
+// WordGapEm is the smallest gap, in em, read as a word space: half of a
+// typical 0.25 em space glyph.
+// shortcut: assumes a 0.25 em space for every font; use the font's own space width once font widths follow the spec.
+const WordGapEm = 0.125
+
 // TextBlock represents a block of text with its position and font information
 type TextBlock struct {
 	Text     string
