@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- ToUnicode CMaps are read completely (ISO 32000 §9.10.3): multi-character `bfrange` destinations increment their last UTF-16 unit, array destinations, codes of up to 4 bytes, and the codespace, which now splits composite codes when the font embeds no encoding CMap. An unreadable ToUnicode stream no longer drops the whole font.
+- Simple fonts without `/Encoding` use the built-in encoding of their embedded Type 1 program, and StandardEncoding only when the font is not symbolic. Type 3 fonts without `/Encoding` keep their bytes instead of a glyph-name guess made in random map order. READoc 0.8357 -> 0.8365, arXiv 0.7797 (pdftotext 0.7785).
+
 ## [0.4.0] - 2026-10-28
 
 ### Fixed
