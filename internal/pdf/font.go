@@ -256,7 +256,7 @@ func (f *Font) SpaceWidth() float64 {
 	w := 0.0
 	switch {
 	case f == nil:
-	case f.spaceCode() != nil:
+	case f.spaceCode() != nil && f.declares(*f.spaceCode()):
 		w = f.Width(*f.spaceCode())
 	case f.std14 != nil:
 		w = float64(f.std14.byName["space"])
@@ -267,22 +267,41 @@ func (f *Font) SpaceWidth() float64 {
 	return w
 }
 
+// declares reports whether the font gives c its own width (/W, /Widths or
+// standard 14 metrics), rather than a default such as /DW or /MissingWidth.
+func (f *Font) declares(c Code) bool {
+	if f.Subtype == "Type0" || f.CIDWidths != nil {
+		_, ok := f.CIDWidths[c.Value]
+		return ok
+	}
+	i := c.Value - f.FirstChar
+	return (i >= 0 && i < len(f.Widths)) || f.std14 != nil
+}
+
+// spaceCode is the lowest code mapped to " " by ToUnicode, else the lowest
+// code the encoding names "space" (WinAnsi also names 160 so), or nil.
 func (f *Font) spaceCode() *Code {
 	n := 1
 	if f.Subtype == "Type0" {
 		n = 2
 	}
+	best := -1
 	for code, s := range f.ToUnicode {
-		if s == " " {
-			return &Code{code, n}
+		if s == " " && (best < 0 || code < best) {
+			best = code
 		}
 	}
-	for code, name := range f.Encoding {
-		if name == "space" {
-			return &Code{code, n}
+	if best < 0 {
+		for code, name := range f.Encoding {
+			if name == "space" && (best < 0 || code < best) {
+				best = code
+			}
 		}
 	}
-	return nil
+	if best < 0 {
+		return nil
+	}
+	return &Code{best, n}
 }
 
 func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {

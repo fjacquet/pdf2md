@@ -109,6 +109,32 @@ func TestMergeElements_WordGap(t *testing.T) {
 	}
 }
 
+// TestMergeElements_SpaceWidth: the font's own space width decides, and
+// blocks without one (OCR) fall back to a 0.25 em space.
+func TestMergeElements_SpaceWidth(t *testing.T) {
+	tests := []struct {
+		name       string
+		bX, sw, fs float64
+		want       string
+	}{
+		{"gap over half the space", 8, 2.5, 40, "A B"},
+		{"gap under half the space", 6, 2.5, 40, "AB"},
+		{"no space width, 0.25 em fallback", 7, 0, 10, "A B"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			elements := []Element{
+				{Type: ElementTypeParagraph, Content: "A", Y: 100, X: 0, Width: 5, FontSize: tt.fs, SpaceWidth: tt.sw},
+				{Type: ElementTypeParagraph, Content: "B", Y: 100, X: tt.bX, Width: 5, FontSize: tt.fs, SpaceWidth: tt.sw},
+			}
+			merged := NewAnalyzer().MergeElements(elements)
+			if len(merged) != 1 || merged[0].Content != tt.want {
+				t.Errorf("got %+v, want one element %q", merged, tt.want)
+			}
+		})
+	}
+}
+
 func TestClassifyElement(t *testing.T) {
 	analyzer := NewAnalyzer()
 	// analyzer.ColumnGapThreshold = 10.0 // Removed

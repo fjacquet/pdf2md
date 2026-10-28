@@ -12,6 +12,8 @@ type Element struct {
 	Height   float64
 	FontSize float64
 	LinkURI  string
+	// SpaceWidth is the font's space width in user space, 0 when unknown.
+	SpaceWidth float64
 
 	// ONNX detection metadata (set when ONNX detection is used)
 	ONNXClassID    int     // Class ID from ONNX model (0 if not detected)

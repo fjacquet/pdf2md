@@ -212,7 +212,7 @@ func fixedWidthFont(w float64) *Font {
 		widths[i] = w
 	}
 	widths[32] = 250
-	return &Font{Subtype: "Type1", ToUnicode: map[int]string{}, Widths: widths, FirstChar: 0, LastChar: 255}
+	return &Font{Subtype: "Type1", ToUnicode: map[int]string{}, Encoding: map[int]string{32: "space"}, Widths: widths, FirstChar: 0, LastChar: 255}
 }
 
 // runText interprets content with font F1: every byte has width 500 and the
@@ -294,5 +294,34 @@ func TestNegativeFontSize(t *testing.T) {
 	near(t, "FontSize", b[0].FontSize, 10)
 	if b[0].Text != "AB" {
 		t.Errorf("Text = %q, want \"AB\"", b[0].Text)
+	}
+}
+
+func TestSpace_FontSpaceWidth(t *testing.T) {
+	fm := NewFontManager(nil)
+	wide := fixedWidthFont(500)
+	wide.Widths[32] = 600
+	fm.Fonts["F1"] = wide
+	blocks, _, _, err := NewInterpreter(fm, nil).Process([]byte("BT /F1 10 Tf [(A) -199 (B)] TJ ET"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocks[0].Text != "AB" {
+		t.Errorf("Text = %q, want \"AB\": -199 is under half of a 600 space", blocks[0].Text)
+	}
+	near(t, "SpaceWidth", blocks[0].SpaceWidth, 6)
+}
+
+func TestSpace_NoDoubleSpace(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf [(A ) -1000 (B)] TJ ET")
+	if b[0].Text != "A B" {
+		t.Errorf("Text = %q, want \"A B\"", b[0].Text)
+	}
+}
+
+func TestSpace_Rotated(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf 0 1 -1 0 100 100 Tm [(A) -199 (B)] TJ ET")
+	if b[0].Text != "A B" || b[0].Width < 0 {
+		t.Errorf("got %q width %v, want \"A B\" and width >= 0", b[0].Text, b[0].Width)
 	}
 }

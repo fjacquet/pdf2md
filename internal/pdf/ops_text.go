@@ -155,8 +155,8 @@ func (in *Interpreter) handleTextShow(op string) error {
 
 		if arr, ok := arrObj.(Array); ok {
 			// One block per TJ. Strings advance glyph by glyph, numbers move
-			// the pen by -n/1000 em; offsets wider than types.WordGapEm are
-			// word spaces, smaller ones are kerning.
+			// the pen by -n/1000 em: a word space when types.IsWordGap holds
+			// against the font's space width, kerning otherwise.
 			x0, y0 := in.textOrigin()
 			var text strings.Builder
 			for _, item := range arr {
@@ -170,7 +170,7 @@ func (in *Interpreter) handleTextShow(op string) error {
 					text.WriteString(t)
 				case Integer, Real:
 					n := toFloat(v)
-					if text.Len() > 0 && isTJWordGap(n, text.String()) {
+					if text.Len() > 0 && !strings.HasSuffix(text.String(), " ") && types.IsWordGap(-n, in.font().SpaceWidth()) {
 						text.WriteString(" ")
 					}
 					in.Tm = Matrix{1, 0, 0, 1, -n / 1000 * in.State.Tfs * in.State.Th / 100, 0}.Multiply(in.Tm)
@@ -276,9 +276,12 @@ func (in *Interpreter) addTextBlock(text string, x, y, dx float64) {
 		dx = -dx
 	}
 
-	// Font size is the length of the (0, Tfs) text-space vector in user space.
+	// Font size is the length of the (0, Tfs) text-space vector in user space,
+	// the space width that of the (space advance, 0) vector.
 	m := in.Tm.Multiply(in.State.CTM)
 	fontSize := math.Hypot(in.State.Tfs*m[2], in.State.Tfs*m[3])
+	sw := in.font().SpaceWidth() / 1000 * in.State.Tfs * in.State.Th / 100
+	spaceWidth := math.Hypot(sw*m[0], sw*m[1])
 
 	// Get real font name
 	fontName := string(in.State.Tf)
@@ -298,6 +301,7 @@ func (in *Interpreter) addTextBlock(text string, x, y, dx float64) {
 		Height:     fontSize,
 		FontSize:   fontSize,
 		FontName:   fontName,
+		SpaceWidth: spaceWidth,
 		RenderMode: in.State.Tmode,
 	})
 }
@@ -308,10 +312,4 @@ func (in *Interpreter) decodeText(s string) string {
 		return in.FontManager.DecodeString(in.State.Tf, s)
 	}
 	return s
-}
-
-// isTJWordGap reports whether a TJ offset (thousandths of em, negative moves
-// right) is a word space, unless text already ends with one.
-func isTJWordGap(offset float64, text string) bool {
-	return -offset/1000 > types.WordGapEm && !strings.HasSuffix(text, " ")
 }
