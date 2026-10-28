@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Form XObjects: nesting is bounded (32 levels), so a form that draws itself no longer crashes with a stack overflow; the form `/Matrix` is applied before the CTM (§8.10.1), so form text lands where viewers draw it; an indirect `/XObject` dictionary is resolved, so its images and forms are no longer dropped; an unknown or broken XObject is skipped with a warning instead of losing the whole page.
 - **Security:** a FlateDecode or LZWDecode stream that decodes to more than 256 MiB is refused (`ErrStreamTooLarge`). A 1 MB PDF holding 1 GiB of zeros used to take 2.16 GB of memory; it now stops at the cap and skips that stream.
 - Page attributes inherited from the page tree (`/Resources`, `/MediaBox`, `/CropBox`, `/Rotate`, ISO 32000 §7.7.3.4) are honoured. A page whose `/Resources` sat on its `/Pages` parent was lost entirely ("no resources dictionary"), and an inherited `/MediaBox` gave a 0×0 page, which silently disabled `--exclude-top` and fed ONNX/OCR a zero page size.
 - A `/Kids` cycle in the page tree, or an object stream claiming to sit inside an object stream, now returns an error instead of crashing with a stack overflow.

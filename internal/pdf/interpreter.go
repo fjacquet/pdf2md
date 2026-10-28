@@ -23,6 +23,8 @@ type Interpreter struct {
 	TextBlocks []types.TextBlock
 	Images     []types.Image
 	Graphics   []types.VectorGraphic
+
+	formDepth int // nesting level of Form XObjects, 0 for the page
 }
 
 // NewInterpreter creates a new interpreter

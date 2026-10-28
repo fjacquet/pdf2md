@@ -2,6 +2,8 @@ package pdf
 
 import (
 	"testing"
+
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 func TestInterpreter_HandleXObject(t *testing.T) {
@@ -43,11 +45,10 @@ func TestInterpreter_HandleXObject(t *testing.T) {
 		t.Errorf("Expected image ID 'Im1', got '%s'", in.Images[0].ID)
 	}
 
-	// Do Unknown
+	// Do Unknown: warns and keeps the page going
 	in.Stack = []Object{Name("Unknown")}
-	// Should return error
-	if err := in.handleXObject("Do"); err == nil {
-		t.Error("Expected error for Unknown XObject, got nil")
+	if err := in.handleXObject("Do"); err != nil {
+		t.Errorf("unknown XObject: err = %v, want nil (warning only)", err)
 	}
 	// Images count should remain 1
 	if len(in.Images) != 1 {
@@ -57,8 +58,8 @@ func TestInterpreter_HandleXObject(t *testing.T) {
 	// Missing Resources
 	inNoRes := NewInterpreter(nil, nil)
 	inNoRes.Stack = []Object{Name("Im1")}
-	if err := inNoRes.handleXObject("Do"); err == nil {
-		t.Error("Expected error for missing resources, got nil")
+	if err := inNoRes.handleXObject("Do"); err != nil || len(inNoRes.Images) != 0 {
+		t.Errorf("missing resources: err = %v, %d images; want nil, 0", err, len(inNoRes.Images))
 	}
 }
 
@@ -102,7 +103,7 @@ func TestInterpreter_ExtractImage_Filters(t *testing.T) {
 // inside the form only.
 func TestFormFonts(t *testing.T) {
 	fm := NewFontManager(nil)
-	fm.Fonts["F1"] = fixedWidthFont(500)
+	fm.Fonts["F1"] = fixedWidthFont()
 	wide := Dictionary{
 		Name("Type"): Name("Font"), Name("Subtype"): Name("Type1"), Name("BaseFont"): Name("Wide"),
 		Name("FirstChar"): Integer(65), Name("LastChar"): Integer(66),
@@ -125,5 +126,80 @@ func TestFormFonts(t *testing.T) {
 	}
 	if blocks[0].Width != 20 || blocks[1].Width != 10 {
 		t.Errorf("widths = %v, %v; want 20 (form font) and 10 (page font)", blocks[0].Width, blocks[1].Width)
+	}
+}
+
+// form returns a Form XObject stream running content, with optional resources.
+func form(content string, resources Dictionary, matrix Array) Stream {
+	d := Dictionary{Name("Type"): Name("XObject"), Name("Subtype"): Name("Form")}
+	if resources != nil {
+		d[Name("Resources")] = resources
+	}
+	if matrix != nil {
+		d[Name("Matrix")] = matrix
+	}
+	return Stream{Dictionary: d, Data: []byte(content)}
+}
+
+func runPage(t *testing.T, content string, resources Dictionary) []types.TextBlock {
+	t.Helper()
+	fm := NewFontManager(nil)
+	fm.Fonts["F1"] = fixedWidthFont()
+	blocks, _, _, err := NewInterpreter(fm, resources).Process([]byte(content))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	return blocks
+}
+
+// Run alone: the failure mode is a fatal stack overflow. A form without
+// /Resources inherits the page's, which hold the form itself.
+func TestForm_SelfReference(t *testing.T) {
+	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("/Fm1 Do", nil, nil)}}
+	runPage(t, "/Fm1 Do BT /F1 10 Tf (after) Tj ET", page)
+}
+
+// Bounded by depth, not by a seen-set: a form drawn twice renders twice.
+func TestForm_DrawnTwice(t *testing.T) {
+	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("BT /F1 10 Tf (logo) Tj ET", nil, nil)}}
+	if b := runPage(t, "/Fm1 Do /Fm1 Do", page); len(b) != 2 {
+		t.Errorf("got %d blocks, want 2", len(b))
+	}
+}
+
+// §8.10.1: the form's /Matrix applies before the CTM. poppler puts this text at x = 2·(100+10) = 220.
+func TestForm_MatrixOrder(t *testing.T) {
+	m := Array{Integer(1), Integer(0), Integer(0), Integer(1), Integer(100), Integer(0)}
+	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("BT /F1 12 Tf 10 300 Td (A) Tj ET", nil, m)}}
+	b := runPage(t, "2 0 0 2 0 0 cm /Fm1 Do", page)
+	if len(b) != 1 || b[0].X != 220 {
+		t.Errorf("blocks = %+v, want one block at X 220", b)
+	}
+}
+
+// One unknown name used to fail the whole page.
+func TestXObject_UnknownNameKeepsPage(t *testing.T) {
+	page := Dictionary{Name("XObject"): Dictionary{}}
+	if b := runPage(t, "/Nope Do BT /F1 10 Tf (kept) Tj ET", page); len(b) != 1 || b[0].Text != "kept" {
+		t.Errorf("blocks = %+v, want the kept text", b)
+	}
+}
+
+// /XObject may be an indirect reference (ISO 32000 §7.8.3).
+func TestXObject_IndirectDictionary(t *testing.T) {
+	r, err := NewReader(writeTestPDF(t,
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [] /Count 0 >>",
+		"<< /Im1 4 0 R >>",
+		"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length 3 >>\nstream\n\xff\x00\x00\nendstream",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	page := Dictionary{Name("XObject"): IndirectRef{ObjectNumber: 3}}
+	_, images, _, err := NewInterpreter(NewFontManager(r), page).Process([]byte("q 10 0 0 10 0 0 cm /Im1 Do Q"))
+	if err != nil || len(images) != 1 {
+		t.Errorf("got %d images, err %v; want 1, nil", len(images), err)
 	}
 }
