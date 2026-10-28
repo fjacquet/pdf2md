@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-28
+
 ### Fixed
 
 - Form XObjects: nesting is bounded (32 levels), so a form that draws itself no longer crashes with a stack overflow; the form `/Matrix` is applied before the CTM (§8.10.1), so form text lands where viewers draw it; an indirect `/XObject` dictionary is resolved, so its images and forms are no longer dropped; an unknown or broken XObject is skipped with a warning instead of losing the whole page.
