@@ -1,7 +1,7 @@
 # Text extraction: rework against ISO 32000
 
 Date: 2026-10-28
-Status: draft, awaiting approval
+Status: draft, awaiting approval (scope widened to reading order)
 
 ## Intent
 
@@ -51,10 +51,24 @@ Reading of it:
   0.917), order is not. Example: `0709.4466` has word F1 0.932 vs 0.962
   but Levenshtein 0.639 vs 0.864, because the two columns are interleaved.
 - **Reachability:** closing the GitHub gap fully gives an overall average
-  of about 0.834. The remaining arXiv gap is mostly reading order, which
-  is a non-goal below. **The criterion (0.861) is probably not reachable
-  without reading order. This scope question goes to the user before the
-  plan.**
+  of about 0.834. The remaining arXiv gap is mostly reading order. The
+  user decided (2026-10-28) to widen the scope to reading order so the
+  criterion stays 0.861.
+
+Reading-order evidence:
+
+- No READoc PDF is tagged (no `/StructTreeRoot`, no `/MarkInfo`), so the
+  logical structure of §14.7–14.8 gives nothing here.
+- Content-stream order is a strong baseline. `pdftotext -raw`, which keeps
+  the stream order, scores 0.802 on arXiv: better than `pdftotext`'s
+  geometric default (0.778) and pdf2md (0.724). On GitHub, `-raw` scores
+  0.888 against 0.943 for the default.
+- `layout/sorter.go` (recursive XY-cut, 553 lines) finds gutters from
+  block widths, and those widths are wrong (deviations 2, 3, 4). A block
+  that is too wide crosses the gutter and is classed as "spanning". Part
+  of the order problem may therefore disappear with the positioning fix.
+  The sorter also carries many fixed constants: 200 pt minimum width,
+  16 pt gutter, 10 % density, 40 % column width, flow scores.
 
 Corpus shape:
 
@@ -149,12 +163,18 @@ Each item cites the code and the documents it is known to affect.
   when the gap between consecutive glyphs exceeds a fraction of the
   font's actual space width (or of the font size when the font has no
   space glyph). Explicit space glyphs are kept.
+- Reading order: blocks come out in reading order on single- and
+  multi-column pages. Content-stream order is the starting point. Geometry
+  is used to detect and repair the cases where the stream order is not the
+  reading order, not to rebuild the order from scratch.
 - Reach the success criterion above.
 
 ## Non-goals
 
-- Reading order across columns, tables, headings, lists, Markdown
-  structure, ONNX and OCR, except where they must adapt to the new output.
+- Tables, headings, lists, Markdown structure, ONNX and OCR, except where
+  they must adapt to the new output.
+- Tagged-PDF structure trees (§14.8) as an order source: no document in
+  the corpus has one. Worth adding later; not needed for the criterion.
 - Rendering or rasterising fonts.
 - New dependencies. The core stays pure Go (embedding the standard 14 AFM
   widths as Go data is fine; they are public Adobe metrics).
@@ -219,9 +239,14 @@ Each item cites the code and the documents it is known to affect.
 3. Word boundary from positions (1) and the layout merge rule (14).
 4. Unicode mapping (10, 11, 13).
 
-**Checkpoint after step 3:** measure. If the remaining gap to `pdftotext`
-is mostly reading order (out of scope), stop and bring the scope decision
-back to the user rather than widening scope silently.
+5. Reading order. Each `TextBlock` carries its index in content-stream
+   order. Measure the stream order alone first, then the existing XY-cut on
+   the corrected positions. Then build the stream-order-first approach
+   described in the goals, and replace `SortBlocks` with it if it scores
+   better.
+
+**Checkpoint after step 3:** measure the word-F1 and Levenshtein split
+again. That shows how much order work is left before step 5 starts.
 
 ## Decisions made by the author (not discussed with the user)
 
