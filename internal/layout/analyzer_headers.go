@@ -1,36 +1,45 @@
 package layout
 
-import "strings"
+import (
+	"cmp"
+	"math"
+	"slices"
+	"strings"
+)
 
-// NormalizeHeaderLevels adjusts header levels so the smallest level becomes H1
-func (a *Analyzer) NormalizeHeaderLevels(elements []Element) []Element {
-	// Find the minimum header level
-	minLevel := 7
-	for _, el := range elements {
-		if el.Type == ElementTypeHeader && el.Level > 0 && el.Level < minLevel {
-			minLevel = el.Level
+// RankHeaderLevels sets every header's level from the document's own
+// hierarchy: its largest heading style is #, the next ##, and so on, capped at
+// ######. A style is the font size rounded to 0.5 pt plus the bold flag; at
+// the same size bold ranks first.
+func (a *Analyzer) RankHeaderLevels(elements []Element) []Element {
+	type style struct {
+		size float64
+		bold bool
+	}
+	key := func(e Element) style { return style{math.Round(e.FontSize*2) / 2, e.Bold} }
+	var styles []style
+	for _, e := range elements {
+		if e.Type == ElementTypeHeader && !slices.Contains(styles, key(e)) {
+			styles = append(styles, key(e))
 		}
 	}
-
-	// If no headers found or already H1, return as-is
-	if minLevel >= 7 || minLevel == 1 {
-		return elements
-	}
-
-	// Shift all header levels down
-	shift := minLevel - 1
+	slices.SortFunc(styles, func(x, y style) int {
+		if x.size != y.size {
+			return cmp.Compare(y.size, x.size)
+		}
+		switch {
+		case x.bold == y.bold:
+			return 0
+		case x.bold:
+			return -1
+		}
+		return 1
+	})
 	for i := range elements {
 		if elements[i].Type == ElementTypeHeader {
-			elements[i].Level -= shift
-			if elements[i].Level < 1 {
-				elements[i].Level = 1
-			}
-			if elements[i].Level > 6 {
-				elements[i].Level = 6
-			}
+			elements[i].Level = min(slices.Index(styles, key(elements[i]))+1, 6)
 		}
 	}
-
 	return elements
 }
 

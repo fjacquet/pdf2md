@@ -13,7 +13,7 @@ A fast, single-binary PDF to Markdown converter written in Go. Designed for AI e
 - **Optional ML** - ONNX layout detection and OCR for scanned pages are opt-in and need `libonnxruntime` on the host (see below)
 - **Column Detection** - Handles multi-column layouts (academic papers, newspapers)
 - **Smart Layout Analysis** - Preserves reading order and document structure
-- **Header Detection** - Automatically identifies H1-H6 based on font size or numbering
+- **Header Detection** - Identifies headings from font size, weight and numbering, with H1–H6 levels following each document's own hierarchy
 - **Code Block Detection** - Identifies code blocks based on content patterns
 - **List Detection** - Handles bulleted and numbered lists
 - **Privacy-First** - Runs completely locally, no cloud API calls

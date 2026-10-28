@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Heading levels follow the document's own hierarchy: heading styles (size rounded to 0.5 pt, bold) are ranked across the whole document, the largest is `#`, the next `##`, up to `######`. They used to come from fixed size ratios, so sections sat at `#` next to the title or whole documents started at `####`. READoc heading F1 (level and text): GitHub 0.18 -> 0.89, arXiv 0.00 -> 0.29; average 0.8367 -> 0.8383.
 - Numbered lines in a row ("1. Fork it", "2. Create your feature branch") are list items, not `#` headings; a numbered line standing alone, or larger or bold, is still a heading. Consecutive bold lines (an abstract) stay a paragraph instead of one heading per line. A heading may start with any character but a lower-case letter, so ".NET MAUI Learning Resources" is no longer left in bold. Ordered list items no longer get a leading space.
 
 ### Added

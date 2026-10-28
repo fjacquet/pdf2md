@@ -295,9 +295,8 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 	// This handles cases where a sentence starts on one page and ends on the next.
 	allElements = analyzer.MergeParagraphLines(allElements)
 
-	// Post-processing: Normalize header levels globally
-	// This ensures consistent header hierarchy across all pages
-	allElements = analyzer.NormalizeHeaderLevels(allElements)
+	// Post-processing: heading levels from the document's style ranking
+	allElements = analyzer.RankHeaderLevels(allElements)
 
 	// Build Markdown
 	md := builder.Build(allElements)
