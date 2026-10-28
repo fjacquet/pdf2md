@@ -248,6 +248,36 @@ Each item cites the code and the documents it is known to affect.
 **Checkpoint after step 3:** measure the word-F1 and Levenshtein split
 again. That shows how much order work is left before step 5 starts.
 
+### Revision after PR #22 (2026-10-28)
+
+PR #22 (v0.2.0) shipped a stopgap for deviation 1 and 14: one rule,
+`types.WordGapEm` = 0.125 em (half a typical space), for TJ offsets and
+for `MergeElements`. Average 0.773 → 0.807, GitHub 0.821 → 0.890, glued
+words 557 → 88.
+
+Two measurements on top of it change the order of work (READoc,
+throwaway builds, not committed):
+
+| Variant | avg | arXiv | GitHub |
+|---|---|---|---|
+| main (XY-cut) | 0.8069 | 0.7240 | 0.8898 |
+| main + TJ width includes offsets | 0.7610 | 0.6293 | 0.8928 |
+| stream order, no `SortBlocks` | 0.8341 | 0.7738 | 0.8943 |
+| stream order + TJ width fix | 0.8342 | 0.7750 | 0.8935 |
+| pdftotext 26.10.0 | 0.8609 | 0.7785 | 0.9434 |
+
+- Correct widths break XY-cut: `sorter.go` needs a 16 pt gutter, real
+  two-column gutters are about 14 pt, and the under-estimated widths were
+  what made them look wider. Three arXiv documents collapse (0709.4466,
+  1711.02387, 2404.13330). Step 1 cannot pass the "average must not drop"
+  gate while `SortBlocks` orders the page.
+- Stream order alone drops no document and brings arXiv to within 0.005
+  of `pdftotext`. With it, the width fix no longer regresses.
+- So step 5 moves before step 1. The remaining gap is mostly GitHub
+  (0.894 vs 0.943), about the size of the link-markup penalty (+0.052 on
+  GitHub). That question goes to the user right after the reading-order
+  step, not after step 3.
+
 ## Decisions made by the author (not discussed with the user)
 
 - The benchmark runs `--no-onnx --no-ocr`, as `cmd/benchmark` already does.
