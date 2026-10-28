@@ -219,8 +219,8 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	// Step 0.5: Apply links to blocks
 	blocks = ApplyLinksToBlocks(blocks, content.Links)
 
-	// Step 1: Sort blocks using Recursive XY-Cut
-	orderedBlocks := SortBlocks(blocks)
+	// Step 1: Reading order: content stream, XY-cut fallback
+	orderedBlocks := OrderBlocks(blocks)
 
 	// Step 3: Detect body font size
 	bodyFontSize := a.detectBodyFontSize(orderedBlocks)
