@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -30,7 +31,7 @@ func SaveImages(images []types.Image, outputDir, prefix string, page int) ([]str
 
 		// Write data
 		if err := os.WriteFile(path, img.Data, 0o600); err != nil {
-			fmt.Printf("Warning: failed to save image %s: %v\n", filename, err)
+			log.Printf("Warning: failed to save image %s: %v\n", filename, err)
 			continue
 		}
 

@@ -3,6 +3,7 @@ package extractor
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/fjacquet/pdf2md/internal/pdf"
 	"github.com/fjacquet/pdf2md/internal/types"
@@ -56,7 +57,7 @@ func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) (*PageContent, error)
 					resources = resDict
 				}
 			} else if e.debug {
-				fmt.Printf("Warning: failed to read resources object: %v\n", err)
+				log.Printf("Warning: failed to read resources object: %v\n", err)
 			}
 		} else if resDict, ok := res.(pdf.Dictionary); ok {
 			resources = resDict
@@ -67,7 +68,7 @@ func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) (*PageContent, error)
 	fm := pdf.NewFontManager(e.reader)
 	if resources != nil {
 		if err := fm.LoadFonts(resources); err != nil && e.debug {
-			fmt.Printf("Warning: failed to load fonts: %v\n", err)
+			log.Printf("Warning: failed to load fonts: %v\n", err)
 		}
 	}
 
@@ -80,7 +81,7 @@ func (e *CustomExtractor) ExtractTextBlocks(pageIndex int) (*PageContent, error)
 	// Extract links
 	links, err := e.reader.ExtractLinks(pageDict)
 	if err != nil && e.debug {
-		fmt.Printf("Warning: failed to extract links: %v\n", err)
+		log.Printf("Warning: failed to extract links: %v\n", err)
 	}
 
 	width, height := e.readPageDimensions(pageDict)

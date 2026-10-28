@@ -154,6 +154,18 @@ func TestAnalyze_UnsavedGraphicsNotLinked(t *testing.T) {
 	}
 }
 
+// A page whose only content yields no element (an unsaved image, a graphic
+// under MinImageSize) must not panic.
+func TestAnalyze_NoElementsLeft(t *testing.T) {
+	content := &extractor.PageContent{
+		Images:   []types.Image{{ID: ""}},
+		Graphics: []types.VectorGraphic{{ID: "images/x.svg", Width: 1, Height: 1}},
+	}
+	if got := NewAnalyzer().Analyze(content); len(got) != 0 {
+		t.Errorf("Analyze() = %v, want no elements", got)
+	}
+}
+
 func TestClassifyElement(t *testing.T) {
 	analyzer := NewAnalyzer()
 	// analyzer.ColumnGapThreshold = 10.0 // Removed
