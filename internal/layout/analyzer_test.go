@@ -2,6 +2,8 @@ package layout
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/fjacquet/pdf2md/internal/extractor"
@@ -178,8 +180,9 @@ func TestClassifyElement(t *testing.T) {
 		expected ElementType
 	}{
 		{"Normal paragraph", 12.0, ElementTypeParagraph},
-		{"1. Introduction", 14.0, ElementTypeHeader}, // Increased font size to pass strict check
-		{"8.3 Accessing support", 12.0, ElementTypeHeader},
+		{"1. Introduction", 16.0, ElementTypeHeader},           // numbered + larger than body × HeaderSizeRatio
+		{"**8.3 Accessing support**", 12.0, ElementTypeHeader}, // numbered + bold
+		{"8.3 Accessing support", 12.0, ElementTypeHeader},     // numbered, alone: a heading
 		{"apiVersion: v1", 12.0, ElementTypeCodeBlock},
 		{"kind: Pod", 12.0, ElementTypeCodeBlock},
 		{"- List item", 12.0, ElementTypeList},
@@ -202,7 +205,7 @@ func ExampleAnalyzer_Analyze() {
 
 	// 2. Define raw text blocks (simulating extraction)
 	blocks := []extractor.TextBlock{
-		{Text: "1. Introduction", X: 10, Y: 800, FontSize: 14},      // Increased font size
+		{Text: "1. Introduction", X: 10, Y: 800, FontSize: 16},      // numbered and larger than body: a heading
 		{Text: "This is a paragraph.", X: 10, Y: 770, FontSize: 12}, // Gap 30 > Threshold
 		{Text: "Another paragraph.", X: 10, Y: 740, FontSize: 12},   // Gap 30 > Threshold
 		{Text: "More body text.", X: 10, Y: 710, FontSize: 12},      // Gap 30 > Threshold
@@ -365,5 +368,96 @@ func TestHasMathFractionPattern(t *testing.T) {
 				t.Errorf("hasMathFractionPattern(%q) = %v, want %v", tt.text, got, tt.want)
 			}
 		})
+	}
+}
+
+// tb is a text block at y in font (regular "Helvetica" or "Helvetica-Bold").
+func tb(text, font string, size, y float64) extractor.TextBlock {
+	return extractor.TextBlock{Text: text, X: 72, Y: y, Width: float64(len(text)) * size * 0.5, Height: size, FontSize: size, FontName: font}
+}
+
+// typeOf analyses a page whose body is 10 pt regular text and returns the
+// element types in order, with their content.
+func typeOf(t *testing.T, blocks ...extractor.TextBlock) []string {
+	t.Helper()
+	body := []extractor.TextBlock{
+		tb("Body text that sets the body font size of the page.", "Helvetica", 10, 100),
+		tb("More body text that sets the body font size.", "Helvetica", 10, 88),
+		tb("Even more body text for the body font size.", "Helvetica", 10, 76),
+	}
+	var out []string
+	for _, e := range NewAnalyzer().Analyze(&extractor.PageContent{TextBlocks: append(blocks, body...)}) {
+		out = append(out, fmt.Sprintf("%s:%s", e.Type, e.Content))
+	}
+	return out
+}
+
+func isHeader(got []string, text string) bool {
+	return slices.Contains(got, fmt.Sprintf("%s:%s", ElementTypeHeader, text))
+}
+
+func TestHeading_NonLetterStart(t *testing.T) {
+	if got := typeOf(t, tb(".NET MAUI Learning Resources", "Helvetica-Bold", 14, 700)); !isHeader(got, ".NET MAUI Learning Resources") {
+		t.Errorf("got %q, want a header", got)
+	}
+}
+
+func TestHeading_LowercaseStartRejected(t *testing.T) {
+	if got := typeOf(t, tb("and then some", "Helvetica", 14, 700)); isHeader(got, "and then some") {
+		t.Errorf("got %q, want no header", got)
+	}
+}
+
+func TestHeading_NumberedBodyLineIsList(t *testing.T) {
+	got := typeOf(t, tb("1. Wash", "Helvetica", 10, 700), tb("2. Slice", "Helvetica", 10, 688))
+	for _, e := range got {
+		if strings.HasPrefix(e, string(ElementTypeHeader)+":") {
+			t.Errorf("got %q, want the numbered body lines as list items", got)
+		}
+	}
+}
+
+func TestHeading_NumberedStyledLineIsHeading(t *testing.T) {
+	got := typeOf(t, tb("2. Results", "Helvetica", 14, 700), tb("2.1 Setup", "Helvetica-Bold", 10, 650))
+	if !isHeader(got, "2. Results") || !isHeader(got, "2.1 Setup") {
+		t.Errorf("got %q, want both numbered lines as headers", got)
+	}
+}
+
+func TestHeading_NumberedMidSentence(t *testing.T) {
+	got := typeOf(t, tb("as shown in 2. The result follows.", "Helvetica", 10, 700))
+	if isHeader(got, "as shown in 2. The result follows.") {
+		t.Errorf("got %q, want no header", got)
+	}
+}
+
+func TestHeading_BoldRunIsParagraph(t *testing.T) {
+	got := typeOf(t,
+		tb("Abstract — We address the error floor", "Helvetica-Bold", 10, 700),
+		tb("problem of low-density parity check codes", "Helvetica-Bold", 10, 688),
+		tb("on the binary input Gaussian channel", "Helvetica-Bold", 10, 676))
+	for _, e := range got {
+		if strings.HasPrefix(e, string(ElementTypeHeader)+":") {
+			t.Errorf("got %q, want the bold block as a paragraph", got)
+		}
+	}
+}
+
+func TestHeading_SingleBoldLineIsHeading(t *testing.T) {
+	if got := typeOf(t, tb("Installation", "Helvetica-Bold", 10, 700)); !isHeader(got, "Installation") {
+		t.Errorf("got %q, want a header", got)
+	}
+}
+
+func TestHeading_BoldSentenceIsParagraph(t *testing.T) {
+	if got := typeOf(t, tb("This is important.", "Helvetica-Bold", 10, 700)); isHeader(got, "This is important.") {
+		t.Errorf("got %q, want no header", got)
+	}
+}
+
+// A numbered section title in body style (1004.3799) stands alone: a heading.
+func TestHeading_NumberedBodyLineAloneIsHeading(t *testing.T) {
+	if got := typeOf(t, tb("1. Sums of Like Powers", "Helvetica", 10, 700)); !isHeader(got, "1. Sums of Like Powers") {
+		t.Errorf("got %q, want a header", got)
 	}
 }

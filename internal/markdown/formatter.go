@@ -26,7 +26,7 @@ func NewFormatter() *Formatter {
 	f.ParagraphTemplate = parseTemplate("paragraph", "{{cleanText .Content}}\n\n")
 	f.CodeBlockTemplate = parseTemplate("code_block", "```\n{{.Content}}\n```\n\n")
 	// List template handles ordered vs unordered
-	f.ListTemplate = parseTemplate("list", "{{indent .Level}}{{listMarker .Content}} {{cleanList .Content}}\n")
+	f.ListTemplate = parseTemplate("list", "{{indent .Level}}{{with listMarker .Content}}{{.}} {{end}}{{cleanList .Content}}\n")
 	// Table template uses formatTable to ensure proper markdown table syntax
 	f.TableTemplate = parseTemplate("table", "{{formatTable .Content}}\n\n")
 	// Admonition template handles keyword bolding

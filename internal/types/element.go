@@ -14,6 +14,8 @@ type Element struct {
 	LinkURI  string
 	// SpaceWidth is the font's space width in user space, 0 when unknown.
 	SpaceWidth float64
+	// Bold is set for a header whose text was fully bold, for heading ranking.
+	Bold bool
 
 	// ONNX detection metadata (set when ONNX detection is used)
 	ONNXClassID    int     // Class ID from ONNX model (0 if not detected)

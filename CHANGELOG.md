@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Numbered lines in a row ("1. Fork it", "2. Create your feature branch") are list items, not `#` headings; a numbered line standing alone, or larger or bold, is still a heading. Consecutive bold lines (an abstract) stay a paragraph instead of one heading per line. A heading may start with any character but a lower-case letter, so ".NET MAUI Learning Resources" is no longer left in bold. Ordered list items no longer get a leading space.
+
 ### Added
 
 - `cmd/benchmark` reports a heading F1 per document (level and text, then text only) and per-subset averages of heading and word F1.
