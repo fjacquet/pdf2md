@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cmd/benchmark`: `-cmd` and `-output` flags score any converter, each document also gets an order-free word F1, and `benchmark_pdftotext.json` commits poppler `pdftotext` 26.10.0's per-document scores (average 0.8609) as the reference to beat.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added

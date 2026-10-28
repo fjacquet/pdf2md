@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"slices"
 	"testing"
 )
@@ -16,5 +17,29 @@ func TestFindRegressions(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("findRegressions() = %v, want %v", got, want)
+	}
+}
+
+func TestExpandCmd(t *testing.T) {
+	got := expandCmd("pdftotext {in} {out}", "a b.pdf", "o.md")
+	want := []string{"pdftotext", "a b.pdf", "o.md"}
+	if !slices.Equal(got, want) {
+		t.Errorf("expandCmd() = %q, want %q", got, want)
+	}
+}
+
+func TestWordF1(t *testing.T) {
+	tests := []struct {
+		gen, gt string
+		want    float64
+	}{
+		{"the cat the", "the cat", 0.8}, // multiset ∩ = 2, sizes 3 and 2
+		{"", "x", 0},
+		{"A-b", "a b", 1}, // tokens are \w+, lowercased
+	}
+	for _, tt := range tests {
+		if got := wordF1(tt.gen, tt.gt); math.Abs(got-tt.want) > 1e-9 {
+			t.Errorf("wordF1(%q, %q) = %v, want %v", tt.gen, tt.gt, got, tt.want)
+		}
 	}
 }
