@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-28
+
 ### Added
 
 - `--password` flag and `PDF2MD_PASSWORD` for encrypted PDFs, and AES-256 (V=5/R=6) decryption. Owner passwords and R=5 are not supported.
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Words were glued on Chrome-generated PDFs: TJ offsets and same-line gaps wider than 0.125 em (half a typical space) now become a word space; before, only TJ offsets below -200 did, and same-line blocks closer than 0.3 em were glued. READoc average 0.773 -> 0.807.
 - Encrypted PDFs whose `/O`, `/U` or `/ID` were written as hex strings (e.g. by qpdf) could never be opened: hex strings are now decoded before use, and hex strings inside encrypted objects are decrypted from their decoded bytes.
 - Fixed list item misclassification.
 - Fixed "missing bullets" issue by leveraging custom parser's text operators.
