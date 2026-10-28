@@ -305,3 +305,9 @@ throwaway builds, not committed):
   built-in encoding in this project or defer it, based on how many
   benchmark documents need it after step 4.
 - Updating `docs/pdf_parser_spec.md`, which currently claims `TD` support.
+
+## Hardening addendum (2026-10-28)
+
+The user asked to note the 12 findings of `/ponytail-audit` in the plan and to fix the first 8, once verified, before continuing. Each was reproduced on a crafted PDF; the advisor review added #13 (one unknown `Do` drops the page) and #6b (inherited `/Resources` lose the page). The plan's "Hardening" section holds the evidence table and Tasks 6–10, which run before Task 5. #9, #11 and #12 are recorded only; #10 is covered by Task 5.
+
+Author's calls: files are named by page and index and never by PDF name (closes the traversal without a sanitizer); decoded streams are capped at 256 MiB each; forms are bounded by depth (32), not by a seen-set, so a form drawn twice still renders twice; page attributes are inherited down the tree, so no `/Parent` walk is needed.

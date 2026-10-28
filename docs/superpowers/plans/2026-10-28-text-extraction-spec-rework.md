@@ -257,6 +257,91 @@ func runText(t *testing.T, content string) []types.TextBlock
 - [ ] **Step 5:** Run `go test ./...`, `make lint`, `make build`, then `go run ./cmd/benchmark`. Expected: the arXiv word F1 does not drop and moves towards `pdftotext`'s 0.917.
 - [ ] **Step 6:** Commit `fix(pdf): complete ToUnicode CMap parsing and built-in Type 1 encodings`.
 
+## Hardening (audit 2026-10-28)
+
+Added after `/ponytail-audit`. Tasks 6–10 run **before Task 5**; the numbers stay so the ledger keys hold. Every finding below was reproduced on a crafted PDF (`pikepdf`) with the v0.3.0+Task 4 binary before it was planned.
+
+| # | Finding | Reproduction | Task |
+|---|---|---|---|
+| 1 | Image file name comes from the XObject name; `#2F` decodes to `/` | `/..#2F..#2F..#2F..#2Fevil Do` wrote `evil.png` one directory above the output directory | 6 |
+| 2 | Images and SVG graphics are named per page with the same prefix | two pages each with an `Im1`: one `f2_overwrite_Im1.png`, both pages link it | 6 |
+| 3 | Library warnings go to stdout, into the Markdown | `/Fm1 Do` without `/XObject`: first stdout line is `Warning: Do operator called…` | 7 |
+| 4 | Unbounded recursion: forms, page tree, object streams | form without `/Resources` running `/Fm1 Do`: `fatal error: stack overflow`, exit 2 | 8 (tree, ObjStm), 10 (forms) |
+| 5 | Flate (and LZW) decode with no output limit | 1 MB PDF holding 1 GiB of zeros: 2.16 GB max RSS | 9 |
+| 6 | `MediaBox` read from the page only | `MediaBox` on `/Pages`: `--exclude-top=50` output identical to no flag; `PageHeight` 0 (also READoc `524987682`) | 8 |
+| 6b | `/Resources` read from the page only | `/Resources` on `/Pages` with an image: `Error extracting page 1: … no resources dictionary`, page lost | 8 |
+| 7 | Form `/Matrix` applied as CTM × Matrix | `2 0 0 2 0 0 cm` + form `/Matrix [1 0 0 1 100 0]`: text at x=120, poppler x=220 | 10 |
+| 8 | Indirect `/XObject` dictionary ignored | `/XObject 12 0 R`: image missing, warning printed | 10 |
+| 13 | One unknown `Do` name drops the whole page | first F1 attempt: `Error extracting page 1: … XObject /evil not found` | 10 |
+| 9 | No object cache; ObjStm re-inflated per object, page tree walked per page, fonts reparsed per page | recorded only | — |
+| 10 | Type 3 `CharProcs` guess in Go map order | covered by Task 5 `TestType3_NoCharProcsGuess` | 5 |
+| 11 | Dead config: `ConfigFor*`, `ColumnGapThreshold`, `WordGapMultiplier` | recorded only | — |
+| 12 | Dead `Font.GetWidth` (since Task 3), `_ = matrixArr`, `_ = charProcsDict` | recorded only | — |
+
+Global Constraints apply; the benchmark gate holds per PR, and Tasks 8 and 10 list the documents that moved.
+
+### Task 6: Image and graphic file names (#1, #2)
+
+**Files:** Modify `internal/extractor/images.go`, `cmd/pdf2md/main.go:228,239`. Test `internal/extractor/images_test.go`.
+
+**Interfaces:** `SaveImages(images []types.Image, outputDir, prefix string, page int) ([]string, error)` and `SaveGraphics(graphics []types.VectorGraphic, outputDir, prefix string, page int) ([]string, error)`. Files are `<prefix>_p<page>_<n>.<ext>` (images) and `<prefix>_p<page>_<n>.svg` (graphics), `n` 1-based within the page. `ID` no longer reaches the file system.
+
+- [ ] **Step 1: Failing tests.** `TestSaveImages_NameFromPDFIgnored`: an image with `ID` `../../../../evil` saved into a temp dir lands at `images/test_p1_1.png`, and no file exists outside `images/`. `TestSaveImages_PagesDoNotCollide`: page 1 and page 2 each save an `Im1` with different bytes; both files exist with their own bytes. Same pair for `SaveGraphics` (`Path1` on two pages). Update `TestSaveImages`/`TestSaveGraphics` for the new signature and names.
+- [ ] **Step 2:** `go test ./internal/extractor -run 'TestSave'`. Expected: FAIL.
+- [ ] **Step 3:** Implement; `main.go` passes the 1-based page number.
+- [ ] **Step 4:** `go test ./...`, `make lint`; benchmark (image names only change; expected no score move). Commit `fix(extractor): name saved images by page and index, never by PDF name`.
+
+### Task 7: Warnings to stderr (#3)
+
+**Files:** Modify `internal/pdf/font.go`, `internal/pdf/ops_xobject.go`, `internal/pdf/ops_inline_image.go`, `internal/extractor/custom.go`, `internal/extractor/images.go`, `cmd/pdf2md/main.go:217`. Test `cmd/pdf2md/main_test.go`.
+
+- [ ] **Step 1: Failing test.** `TestStdoutIsOnlyMarkdown`: run the CLI's conversion on a `writePDF` fixture whose page content is `/Fm1 Do BT … (hello) Tj ET` with no `/XObject`; captured stdout equals the Markdown alone (no line starting with `Warning`/`Error`).
+- [ ] **Step 2:** Run it. Expected: FAIL.
+- [ ] **Step 3:** Replace every `fmt.Printf` warning in library code with `log.Printf` (stderr), and `main.go`'s per-page error with the existing `logger`. `grep -rn 'fmt.Print' internal` must return only non-warning uses.
+- [ ] **Step 4:** `go test ./...`, `make lint`. Commit `fix: send library warnings to stderr, keep stdout for Markdown`.
+
+### Task 8: Page tree: cycles, inherited attributes (#4 tree and ObjStm, #6, #6b)
+
+**Files:** Modify `internal/pdf/reader.go` (`traversePageTree`, `readCompressedObject`), `internal/extractor/custom.go` (`readPageDimensions`, resources). Create test helper `writeTestPDF(t, objs ...string) string` in `internal/pdf/testpdf_test.go` (objects numbered from 1, object 1 the catalog, classic xref). Test `internal/pdf/reader_test.go`, `internal/extractor/custom_test.go`.
+
+**Interfaces:** `GetPage` returns the leaf dictionary with the inheritable keys (`Resources`, `MediaBox`, `CropBox`, `Rotate`, §7.7.3.4) filled in from its ancestors when the leaf lacks them. `custom.go` keeps reading them from the page dictionary.
+
+- [ ] **Step 1: Failing tests.**
+  - `TestGetPage_KidsCycle`: `/Pages` whose `/Kids` holds itself. `GetPage(1)` returns an error, no stack overflow (run alone with `-run`; the failure mode is a fatal overflow).
+  - `TestReadObject_ObjStmInsideObjStm`: a `Reader` with `XrefTable[5] = {Type: 2, StreamObjNum: 5}` returns an error from `ReadObject(5)` (§7.5.7 forbids object streams inside object streams).
+  - `TestGetPage_InheritsMediaBoxAndResources`: `MediaBox` and `/Resources /Font` only on `/Pages`; the page dict from `GetPage(1)` has both.
+  - `TestExtractTextBlocks_InheritedResources` (extractor): same layout plus an image XObject; `ExtractTextBlocks(1)` returns no error, one image, and `PageHeight == 792`.
+- [ ] **Step 2:** Run them. Expected: FAIL.
+- [ ] **Step 3:** Implement. `traversePageTree` carries a visited set of object numbers and the inherited keys down the recursion. `readCompressedObject` rejects a container whose own entry is type 2.
+- [ ] **Step 4:** `go test ./...`, `make lint`; benchmark: list documents that moved (inherited resources may add text or images). Commit `fix(pdf): inherit page attributes from the page tree, refuse page tree and object stream cycles`.
+
+### Task 9: Decompression limit (#5)
+
+**Files:** Modify `internal/pdf/filters.go` (`decodeFlate`, `decodeLZW`). Test `internal/pdf/filters_test.go`.
+
+**Interfaces:** `var maxDecodedStream int64 = 256 << 20` (package var so tests can lower it). Over the limit: error wrapping `ErrStreamTooLarge`.
+
+- [ ] **Step 1: Failing test.** `TestDecodeFlate_Limit`: with `maxDecodedStream = 1 << 10`, 4 KiB of zeros compressed decodes to an `ErrStreamTooLarge` error; 512 bytes decode fine. Same for LZW.
+- [ ] **Step 2:** Run it. Expected: FAIL.
+- [ ] **Step 3:** `io.ReadAll(io.LimitReader(r, maxDecodedStream+1))`, error when longer. Comment the value: above an RGB letter page at 600 dpi (~100 MB). `shortcut: per-stream cap only; the total across streams is unbounded, add a document budget if batch ingestion needs one.`
+- [ ] **Step 4:** `go test ./...`, `make lint`; benchmark unchanged. Commit `fix(pdf): cap decoded stream size`.
+
+### Task 10: Form XObjects (#4 forms, #7, #8, #13)
+
+**Files:** Modify `internal/pdf/ops_xobject.go`, `internal/pdf/interpreter.go` (depth field). Test `internal/pdf/ops_xobject_test.go`.
+
+**Interfaces:** `Interpreter.formDepth int`; a form at depth `maxFormDepth = 32` is skipped with a warning. Missing XObject names and missing `/XObject` dictionaries warn and continue; neither fails the page.
+
+- [ ] **Step 1: Failing tests** (in-memory, like `TestFormFonts`):
+  - `TestForm_SelfReference`: a form without `/Resources` whose content is `/Fm1 Do`, page resources holding it; `Process` returns, no stack overflow (run alone).
+  - `TestForm_DrawnTwice`: the same form drawn twice yields its text twice (depth, not a seen-set).
+  - `TestForm_MatrixOrder`: `2 0 0 2 0 0 cm` + form `/Matrix [1 0 0 1 100 0]` + `10 300 Td (A) Tj` gives `X == 220` (poppler's value).
+  - `TestXObject_IndirectDictionary`: `/XObject` an `IndirectRef` resolved by the reader gives the image. Needs a reader: use `writeTestPDF` from Task 8.
+  - `TestXObject_UnknownNameKeepsPage`: `/Nope Do BT … (kept) Tj ET` returns the `kept` block and no error. Update `TestInterpreter_HandleXObject`, which expected errors for an unknown name and for missing resources.
+- [ ] **Step 2:** Run them. Expected: FAIL.
+- [ ] **Step 3:** Implement: depth counter around the sub-interpreter; `formMatrix.Multiply(in.State.CTM)`; resolve `/XObject` through the reader; warn (stderr) and return nil for unknown names.
+- [ ] **Step 4:** `go test ./...`, `make lint`; benchmark: list documents that moved (form text positions). Commit `fix(pdf): bound form recursion, apply form Matrix first, resolve indirect XObject dictionaries, keep pages with unknown XObjects`.
+
 ### Final check
 
 - [ ] Run `go run ./cmd/benchmark` and compare with `benchmark_pdftotext.json`. Expected: average ≥ 0.861. If not, stop and report the per-document gap to the user. Do not add thresholds.

@@ -228,8 +228,11 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	// Step 4: Convert blocks to initial elements
 	elements := a.blocksToElements(orderedBlocks)
 
-	// Step 4.5: Add images
+	// Step 4.5: Add images. An empty ID means there is no file to link.
 	for _, img := range images {
+		if img.ID == "" {
+			continue
+		}
 		elements = append(elements, Element{
 			Type:    ElementTypeImage,
 			Content: img.ID,
@@ -242,6 +245,9 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 
 	// Step 4.6: Add vector graphics
 	for _, vg := range graphics {
+		if vg.ID == "" {
+			continue
+		}
 		minSize := 50.0
 		if a.Config != nil {
 			minSize = a.Config.MinImageSize
