@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/fjacquet/pdf2md/internal/extractor"
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 func TestNewAnalyzer(t *testing.T) {
@@ -132,6 +133,24 @@ func TestMergeElements_SpaceWidth(t *testing.T) {
 				t.Errorf("got %+v, want one element %q", merged, tt.want)
 			}
 		})
+	}
+}
+
+// An image or graphic with no ID has no file to link (not saved, or trivial):
+// it must not become a Markdown image.
+func TestAnalyze_UnsavedGraphicsNotLinked(t *testing.T) {
+	content := &extractor.PageContent{
+		Images:   []types.Image{{ID: "", X: 0, Y: 100, Width: 100, Height: 100}},
+		Graphics: []types.VectorGraphic{{ID: "", X: 0, Y: 300, Width: 100, Height: 100}, {ID: "images/doc_p1_2.svg", X: 0, Y: 500, Width: 100, Height: 100}},
+	}
+	var links []string
+	for _, e := range NewAnalyzer().Analyze(content) {
+		if e.Type == ElementTypeImage {
+			links = append(links, e.Content)
+		}
+	}
+	if len(links) != 1 || links[0] != "images/doc_p1_2.svg" {
+		t.Errorf("image elements = %q, want only the saved graphic", links)
 	}
 }
 

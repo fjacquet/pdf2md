@@ -8,8 +8,10 @@ import (
 	"github.com/fjacquet/pdf2md/internal/types"
 )
 
-// SaveImages saves extracted images to the specified directory
-func SaveImages(images []types.Image, outputDir, prefix string) ([]string, error) {
+// SaveImages saves the images of page (1-based) as images/<prefix>_p<page>_<n>.<format>.
+// The PDF's own XObject name never reaches the file system: it is attacker
+// controlled (#2F decodes to "/") and repeats across pages.
+func SaveImages(images []types.Image, outputDir, prefix string, page int) ([]string, error) {
 	if len(images) == 0 {
 		return nil, nil
 	}
@@ -20,15 +22,9 @@ func SaveImages(images []types.Image, outputDir, prefix string) ([]string, error
 		return nil, fmt.Errorf("failed to create image directory: %w", err)
 	}
 
-	var savedPaths []string
+	savedPaths := make([]string, len(images)) // lines up with images; "" when a write failed
 	for i, img := range images {
-		// Generate filename
-		// Use ID if available, otherwise index
-		filename := fmt.Sprintf("%s_img_%d.%s", prefix, i+1, img.Format)
-		if img.ID != "" {
-			// Sanitize ID?
-			filename = fmt.Sprintf("%s_%s.%s", prefix, img.ID, img.Format)
-		}
+		filename := fmt.Sprintf("%s_p%d_%d.%s", prefix, page, i+1, img.Format)
 
 		path := filepath.Join(imgDir, filename)
 
@@ -39,37 +35,29 @@ func SaveImages(images []types.Image, outputDir, prefix string) ([]string, error
 		}
 
 		// Store relative path for markdown
-		relPath := filepath.Join("images", filename)
-		savedPaths = append(savedPaths, relPath)
-
-		// Update Image struct with path?
-		// We can't modify the slice in place easily if we want to return paths.
-		// But the caller might need to know which image maps to which path.
+		savedPaths[i] = filepath.Join("images", filename)
 	}
 
 	return savedPaths, nil
 }
 
-// SaveGraphics saves vector graphics to the output directory
-func SaveGraphics(graphics []types.VectorGraphic, outputDir, prefix string) ([]string, error) {
+// SaveGraphics saves the non-trivial graphics of page (1-based) as
+// images/<prefix>_p<page>_<n>.svg. The returned paths line up with graphics;
+// a skipped graphic gets "".
+func SaveGraphics(graphics []types.VectorGraphic, outputDir, prefix string, page int) ([]string, error) {
 	imagesDir := filepath.Join(outputDir, "images")
 	if err := os.MkdirAll(imagesDir, 0o750); err != nil {
 		return nil, err
 	}
 
-	var savedPaths []string
+	savedPaths := make([]string, len(graphics))
 	for i, vg := range graphics {
 		// Skip trivial graphics (simple rectangles, lines, decorative elements)
 		if IsTrivialGraphic(vg) {
 			continue
 		}
 
-		// Generate filename
-		filename := vg.ID
-		if filename == "" {
-			filename = fmt.Sprintf("graphic_%d", i+1)
-		}
-		filename = fmt.Sprintf("%s_%s.svg", prefix, filename)
+		filename := fmt.Sprintf("%s_p%d_%d.svg", prefix, page, i+1)
 
 		path := filepath.Join(imagesDir, filename)
 
@@ -81,8 +69,7 @@ func SaveGraphics(graphics []types.VectorGraphic, outputDir, prefix string) ([]s
 		}
 
 		// Return relative path for Markdown
-		relPath := filepath.Join("images", filename)
-		savedPaths = append(savedPaths, relPath)
+		savedPaths[i] = filepath.Join("images", filename)
 	}
 
 	return savedPaths, nil
