@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-28
+
 ### Fixed
 
 - Heading levels follow the document's own hierarchy: heading styles (size rounded to 0.5 pt, bold) are ranked across the whole document, the largest is `#`, the next `##`, up to `######`. They used to come from fixed size ratios, so sections sat at `#` next to the title or whole documents started at `####`. READoc heading F1 (level and text): GitHub 0.18 -> 0.89, arXiv 0.00 -> 0.29; average 0.8367 -> 0.8383.
