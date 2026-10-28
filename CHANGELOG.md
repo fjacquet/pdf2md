@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-28
+
 ### Changed
 
 - Reading order follows the content stream, the order the producer wrote the page in. XY-cut is used only on pages where the stream jumps back up within a column on more than 10% of line transitions. READoc average 0.807 -> 0.834 (arXiv 0.724 -> 0.773); two-column text no longer comes out as a table.
