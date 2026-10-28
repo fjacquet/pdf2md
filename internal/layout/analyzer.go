@@ -169,8 +169,9 @@ func NewAnalyzerWithConfig(config *Config) *Analyzer {
 		},
 		{
 			Name: "Header (Numbered)",
+			// Runs of numbered body-style lines are lists: demoteNumberedRuns.
 			Condition: func(text string, _, _ float64) bool {
-				return a.isNumberedHeader(text)
+				return a.isNumberedHeader(stripBold(text))
 			},
 			Type: ElementTypeHeader,
 		},
@@ -280,6 +281,8 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 		a.classifyElement(&elements[i], prev, bodyFontSize)
 		prev = &elements[i]
 	}
+	elements = a.demoteBoldRuns(elements, bodyFontSize)
+	elements = a.demoteNumberedRuns(elements, bodyFontSize)
 
 	// Step 6.5: Merge list item continuations (paragraphs following list items)
 	elements = a.MergeListContinuations(elements)

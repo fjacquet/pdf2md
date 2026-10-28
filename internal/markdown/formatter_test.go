@@ -6,6 +6,7 @@ import (
 	"text/template"
 
 	"github.com/fjacquet/pdf2md/internal/layout"
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 func TestCustomFormatter(t *testing.T) {
@@ -54,5 +55,16 @@ func TestCustomFormatter(t *testing.T) {
 	}
 	if !strings.Contains(output, expectedH2) {
 		t.Errorf("Expected output to contain:\n%s\nGot:\n%s", expectedH2, output)
+	}
+}
+
+// An ordered item keeps its own number and starts at the margin.
+func TestFormatElement_OrderedListItem(t *testing.T) {
+	f := NewFormatter()
+	for content, want := range map[string]string{"1. Wash": "1. Wash\n", "• Apples": "- Apples\n"} {
+		got, err := f.FormatElement(types.Element{Type: types.ElementTypeList, Content: content, Level: 1})
+		if err != nil || got != want {
+			t.Errorf("FormatElement(%q) = %q, %v; want %q", content, got, err, want)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"math"
 	"strings"
 	"unicode"
 )
@@ -18,7 +19,9 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 			element.Type = rule.Type
 			// Special handling for numbered headers - calculate level from pattern
 			if rule.Name == "Header (Numbered)" {
-				element.Level = a.calculateNumberedHeaderLevel(text)
+				element.Bold = fullyBold(text)
+				element.Content = stripBold(text)
+				element.Level = a.calculateNumberedHeaderLevel(element.Content)
 			}
 			return
 		}
@@ -39,14 +42,15 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 			}
 		}
 
-		// Headers must start with uppercase letter or digit
-		isValidHeaderStart := unicode.IsUpper(firstChar) || unicode.IsDigit(firstChar)
-		if !isValidHeaderStart {
+		// Large text starting lower case continues a sentence; anything else
+		// (capital, digit, ".NET", "(a)") may start a heading.
+		if unicode.IsLower(firstChar) {
 			element.Type = ElementTypeParagraph
 			return
 		}
 
 		element.Type = ElementTypeHeader
+		element.Bold = fullyBold(text)
 		element.Level = a.calculateHeaderLevel(element.FontSize, bodyFontSize)
 		// Strip bold markers from headers (formatting is already implied by header level)
 		content := element.Content
@@ -71,6 +75,7 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 
 		if !looksLikeCodeLine && looksLikeHeader {
 			element.Type = ElementTypeHeader
+			element.Bold = true
 			element.Level = 4
 			element.Content = innerText
 			return
@@ -630,4 +635,69 @@ func containsSignificantNumbers(text string) bool {
 	}
 
 	return digitCount >= 2 && maxConsecutive >= 2
+}
+
+// fullyBold reports whether text is wrapped in the ** markers blocksToElements
+// adds for bold fonts.
+func fullyBold(text string) bool {
+	return len(text) > 4 && strings.HasPrefix(text, "**") && strings.HasSuffix(text, "**")
+}
+
+// stripBold removes the ** markers around fully bold text.
+func stripBold(text string) string {
+	if fullyBold(text) {
+		return strings.TrimSpace(text[2 : len(text)-2])
+	}
+	return text
+}
+
+// demoteNumberedRuns turns runs of adjacent numbered headers in body style
+// into list items: a numbered heading stands alone between paragraphs, while
+// "1. Wash", "2. Slice" in a row is a list. Larger or bold numbered lines stay
+// headings.
+func (a *Analyzer) demoteNumberedRuns(elements []Element, bodyFontSize float64) []Element {
+	plain := func(e Element) bool {
+		return e.Type == ElementTypeHeader && !e.Bold && e.FontSize <= bodyFontSize*a.HeaderSizeRatio &&
+			a.isNumberedHeader(e.Content)
+	}
+	for i := 0; i < len(elements); {
+		j := i
+		for j < len(elements) && plain(elements[j]) {
+			j++
+		}
+		if j-i >= 2 {
+			for k := i; k < j; k++ {
+				elements[k].Type = ElementTypeList
+				elements[k].Level = 1
+			}
+		}
+		i = max(j, i+1)
+	}
+	return elements
+}
+
+// demoteBoldRuns turns runs of bold body-size headers on consecutive lines
+// back into bold paragraph lines: a heading stands alone; consecutive bold
+// lines are an emphasised block (an abstract, a warning).
+func (a *Analyzer) demoteBoldRuns(elements []Element, bodyFontSize float64) []Element {
+	boldLine := func(e Element) bool {
+		return e.Type == ElementTypeHeader && e.Bold && e.FontSize <= bodyFontSize*a.HeaderSizeRatio
+	}
+	for i := 0; i < len(elements); {
+		j := i + 1
+		for j < len(elements) && boldLine(elements[i]) && boldLine(elements[j]) &&
+			math.Abs(elements[j].FontSize-elements[j-1].FontSize) <= 0.5 &&
+			math.Abs(elements[j].Y-elements[j-1].Y) < 2*elements[j-1].FontSize {
+			j++
+		}
+		if j-i >= 2 {
+			for k := i; k < j; k++ {
+				elements[k].Type = ElementTypeParagraph
+				elements[k].Level = 0
+				elements[k].Content = "**" + elements[k].Content + "**"
+			}
+		}
+		i = j
+	}
+	return elements
 }

@@ -49,9 +49,11 @@ Causes, read in `internal/layout`:
 - Heading levels follow the document's own hierarchy. The rank of a
   heading style within the document gives the level: the largest style is
   `#`, the next `##`, and so on, capped at `######`.
-- A numbered line is a heading only when it is styled as one (larger than
-  body text or bold, and alone on its line). Otherwise it is a list item, and
-  a run of numbered lines in body style is a list.
+- A numbered line is a heading when it is styled as one (larger than body
+  text or bold) or when it stands alone between paragraphs; adjacent
+  numbered lines in body style are a list. *(Revised during Task 2:
+  1004.3799 sets its section titles "1. Sums of Like Powers" in body style,
+  so style alone would lose them; adjacency is what separates a list.)*
 - Bold text is a heading only when it is short and stands alone. Consecutive
   bold lines that read as one block (an abstract, an emphasised paragraph)
   stay a paragraph.
