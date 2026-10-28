@@ -1,7 +1,11 @@
 package pdf
 
 import (
+	"bytes"
+	"log"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -156,11 +160,7 @@ func TestType3Font_GetWidth(t *testing.T) {
 
 func mustParseFont(t *testing.T, dict Dictionary) *Font {
 	t.Helper()
-	f, err := NewFontManager(nil).parseFont(dict)
-	if err != nil {
-		t.Fatalf("parseFont: %v", err)
-	}
-	return f
+	return NewFontManager(nil).parseFont(dict)
 }
 
 func TestWidth_MissingWidth(t *testing.T) {
@@ -264,5 +264,112 @@ func TestSpaceWidth_WinAnsiPicksCode32(t *testing.T) {
 		if w := f.SpaceWidth(); w != 250 {
 			t.Fatalf("SpaceWidth() = %v, want 250 (code 32 width 0, not code 160's 900)", w)
 		}
+	}
+}
+
+func cmap(body string) []byte {
+	return []byte("/CIDInit /ProcSet findresource begin\nbegincmap\n" + body + "\nendcmap\n")
+}
+
+func TestToUnicode_BfrangeIncrement(t *testing.T) {
+	m, _ := parseToUnicodeCMap(cmap("1 beginbfrange\n<0001> <0003> <0041>\nendbfrange"))
+	for code, want := range map[int]string{1: "A", 2: "B", 3: "C"} {
+		if m[code] != want {
+			t.Errorf("code %d = %q, want %q", code, m[code], want)
+		}
+	}
+}
+
+// The last UTF-16 unit of a multi-character destination is incremented (§9.10.3).
+func TestToUnicode_BfrangeMultiChar(t *testing.T) {
+	m, _ := parseToUnicodeCMap(cmap("1 beginbfrange\n<0005> <0006> <00660069>\nendbfrange"))
+	if m[5] != "fi" || m[6] != "fj" {
+		t.Errorf("codes 5, 6 = %q, %q; want \"fi\", \"fj\"", m[5], m[6])
+	}
+}
+
+func TestToUnicode_BfrangeArray(t *testing.T) {
+	m, _ := parseToUnicodeCMap(cmap("1 beginbfrange\n<0007> <0008> [<0058> <00590059>]\nendbfrange"))
+	if m[7] != "X" || m[8] != "YY" {
+		t.Errorf("codes 7, 8 = %q, %q; want \"X\", \"YY\"", m[7], m[8])
+	}
+}
+
+func TestToUnicode_FourByteCode(t *testing.T) {
+	m, cs := parseToUnicodeCMap(cmap("1 begincodespacerange\n<00000000> <FFFFFFFF>\nendcodespacerange\n1 beginbfchar\n<00000041> <0042>\nendbfchar"))
+	if m[0x41] != "B" {
+		t.Errorf("code 0x41 = %q, want \"B\"", m[0x41])
+	}
+	if len(cs) != 1 || len(cs[0].lo) != 4 {
+		t.Errorf("codespace = %v, want one 4-byte range", cs)
+	}
+}
+
+func TestToUnicode_Codespace(t *testing.T) {
+	_, cs := parseToUnicodeCMap(cmap("2 begincodespacerange\n<00> <80>\n<8140> <FFFF>\nendcodespacerange"))
+	if len(cs) != 2 || len(cs[0].lo) != 1 || len(cs[1].lo) != 2 {
+		t.Errorf("codespace = %v, want a 1-byte and a 2-byte range", cs)
+	}
+}
+
+// A composite font without an embedded encoding CMap splits codes by its
+// ToUnicode codespace.
+func TestCodes_ToUnicodeCodespace(t *testing.T) {
+	tu := cmap("2 begincodespacerange\n<00> <80>\n<8140> <FFFF>\nendcodespacerange\n1 beginbfchar\n<8140> <3042>\nendbfchar")
+	f := mustParseFont(t, Dictionary{
+		Name("Subtype"): Name("Type0"), Name("Encoding"): Name("Identity-H"),
+		Name("ToUnicode"): Stream{Dictionary: Dictionary{}, Data: tu},
+	})
+	if got := f.DecodeString("A\x81\x40"); got != "Aあ" {
+		t.Errorf("DecodeString = %q, want \"Aあ\"", got)
+	}
+}
+
+const type1Cleartext = "%!PS-AdobeFont-1.0: Test\n/Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\ndup 65 /alpha put\nreadonly def\ncurrentfile eexec\n\x8f\x12binary"
+
+func TestType1BuiltinEncoding(t *testing.T) {
+	if enc := type1BuiltinEncoding([]byte(type1Cleartext)); enc[65] != "alpha" {
+		t.Errorf("enc[65] = %q, want \"alpha\"", enc[65])
+	}
+	f := mustParseFont(t, Dictionary{
+		Name("Subtype"): Name("Type1"), Name("BaseFont"): Name("ABCDEF+CMMI10"),
+		Name("FontDescriptor"): Dictionary{Name("Flags"): Integer(4), Name("FontFile"): Stream{Dictionary: Dictionary{}, Data: []byte(type1Cleartext)}},
+	})
+	if got := f.DecodeString("A"); got != "α" {
+		t.Errorf("DecodeString(\"A\") = %q, want \"α\" from the built-in encoding", got)
+	}
+}
+
+func TestLoadFonts_BadFontKept(t *testing.T) {
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	fm := NewFontManager(nil)
+	bad := Dictionary{
+		Name("Subtype"): Name("Type1"), Name("BaseFont"): Name("Broken"), Name("Encoding"): Name("WinAnsiEncoding"),
+		Name("FirstChar"): Integer(65), Name("LastChar"): Integer(65), Name("Widths"): Array{Integer(600)},
+		Name("ToUnicode"): Stream{Dictionary: Dictionary{Name("Filter"): Name("FlateDecode")}, Data: []byte("not zlib")},
+	}
+	if err := fm.LoadFonts(Dictionary{Name("Font"): Dictionary{Name("F1"): bad}}); err != nil {
+		t.Fatal(err)
+	}
+	f := fm.Fonts["F1"]
+	if f == nil || f.Width(Code{65, 1}) != 600 || f.Encoding[65] != "A" {
+		t.Fatalf("font F1 = %+v, want it kept with widths and encoding", f)
+	}
+	if !strings.Contains(logged.String(), "ToUnicode") {
+		t.Errorf("log = %q, want a ToUnicode warning", logged.String())
+	}
+}
+
+// Without /Encoding a Type 3 font's codes stay bytes: guessing names from
+// /CharProcs in Go map order gave a different text on every run.
+func TestType3_NoCharProcsGuess(t *testing.T) {
+	f := mustParseFont(t, Dictionary{
+		Name("Subtype"): Name("Type3"), Name("FirstChar"): Integer(65), Name("LastChar"): Integer(66),
+		Name("CharProcs"): Dictionary{Name("a"): Stream{}, Name("b"): Stream{}},
+	})
+	if len(f.Encoding) != 0 || f.DecodeString("AB") != "AB" {
+		t.Errorf("Encoding %v, DecodeString %q; want no encoding and \"AB\"", f.Encoding, f.DecodeString("AB"))
 	}
 }

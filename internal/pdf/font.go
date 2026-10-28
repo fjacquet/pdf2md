@@ -6,6 +6,7 @@ import (
 	"log"
 	"maps"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -99,13 +100,7 @@ func (fm *FontManager) LoadFonts(resources Dictionary) error {
 		}
 
 		if fDict, ok := fObj.(Dictionary); ok {
-			font, err := fm.parseFont(fDict)
-			if err != nil {
-				// Log error but continue?
-				log.Printf("Error parsing font %s: %v\n", name, err)
-				continue
-			}
-			fm.Fonts[name] = font
+			fm.Fonts[name] = fm.parseFont(fDict)
 		}
 	}
 	return nil
@@ -303,7 +298,7 @@ func (f *Font) spaceCode() *Code {
 	return &Code{best, n}
 }
 
-func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
+func (fm *FontManager) parseFont(dict Dictionary) *Font {
 	font := &Font{
 		ToUnicode: make(map[int]string),
 		Encoding:  make(map[int]string),
@@ -316,7 +311,8 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 		font.Subtype = string(subtype)
 	}
 	font.std14 = lookupStd14(font.BaseFont)
-	if fd, ok := fm.resolve(dict[Name("FontDescriptor")]).(Dictionary); ok {
+	fd, _ := fm.resolve(dict[Name("FontDescriptor")]).(Dictionary)
+	if fd != nil {
 		font.MissingWidth = toFloat(fd[Name("MissingWidth")])
 	}
 	if m, ok := dict[Name("FontMatrix")].(Array); ok && len(m) == 6 && font.Subtype == "Type3" {
@@ -381,54 +377,59 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 		}
 	}
 
-	// Parse Encoding
+	// Parse Encoding (§9.6.5): the /Encoding entry, else the built-in
+	// encoding of an embedded Type 1 program, else StandardEncoding for a
+	// non-symbolic simple font. Type 3 fonts without /Encoding keep bytes.
 	if encodingObj, ok := dict[Name("Encoding")]; ok {
 		fm.parseEncoding(font, encodingObj)
 	} else if font.Subtype == "Type1" || font.Subtype == "TrueType" {
-		// Default encoding based on Subtype
-		// For Type1, default is StandardEncoding if not specified (usually)
-		// For TrueType, it's complicated.
-		// Type3 fonts MUST have an Encoding entry per spec, but handle gracefully if missing.
-		// Let's assume StandardEncoding for simple fonts if nothing else.
-		for i, name := range StandardEncoding {
-			if name != "" {
-				font.Encoding[i] = name
+		builtin := fm.builtinEncoding(fd)
+		if builtin == nil && !symbolic(fd) {
+			builtin = map[int]string{}
+			for i, name := range StandardEncoding {
+				if name != "" {
+					builtin[i] = name
+				}
+			}
+		}
+		maps.Copy(font.Encoding, builtin)
+	}
+
+	// Check ToUnicode CMap. A broken one loses the mapping, not the font.
+	if toUnicode, ok := fm.resolve(dict[Name("ToUnicode")]).(Stream); ok && toUnicode.Data != nil {
+		data, err := decodeStream(toUnicode)
+		if err != nil {
+			log.Printf("Warning: font %s: unreadable ToUnicode CMap: %v", font.BaseFont, err)
+		} else {
+			var cs []codespace
+			font.ToUnicode, cs = parseToUnicodeCMap(data)
+			if len(font.codespaces) == 0 {
+				font.codespaces = cs
 			}
 		}
 	}
 
-	// Handle Type3 specific parsing
-	if font.Subtype == "Type3" {
-		fm.parseType3Font(font, dict)
+	return font
+}
+
+// symbolic reports the FontDescriptor /Flags symbolic bit (bit 3).
+func symbolic(fd Dictionary) bool {
+	return int(toFloat(fd[Name("Flags")]))&4 != 0
+}
+
+// builtinEncoding reads the encoding built into an embedded Type 1 program
+// (FontFile), or nil.
+// shortcut: CFF built-in encoding not read, upgrade when a corpus document needs it.
+func (fm *FontManager) builtinEncoding(fd Dictionary) map[int]string {
+	ff, ok := fm.resolve(fd[Name("FontFile")]).(Stream)
+	if !ok {
+		return nil
 	}
-
-	// Check ToUnicode CMap
-	if toUnicode, ok := dict[Name("ToUnicode")]; ok {
-		var stream Stream
-		if ref, ok := toUnicode.(IndirectRef); ok {
-			obj, err := fm.reader.ReadObject(ref.ObjectNumber)
-			if err != nil {
-				return nil, err
-			}
-			if s, ok := obj.(Stream); ok {
-				stream = s
-			}
-		} else if s, ok := toUnicode.(Stream); ok {
-			stream = s
-		}
-
-		if stream.Data != nil {
-			// Decompress if needed
-			data, err := decodeStream(stream)
-			if err != nil {
-				return nil, err
-			}
-
-			font.parseToUnicodeCMap(data)
-		}
+	data, err := decodeStream(ff)
+	if err != nil {
+		return nil
 	}
-
-	return font, nil
+	return type1BuiltinEncoding(data)
 }
 
 func (fm *FontManager) parseEncoding(font *Font, encodingObj Object) {
@@ -483,83 +484,6 @@ func (fm *FontManager) parseEncoding(font *Font, encodingObj Object) {
 				} else if name, ok := item.(Name); ok {
 					font.Encoding[currentCode] = string(name)
 					currentCode++
-				}
-			}
-		}
-	}
-}
-
-// parseType3Font handles Type3 font specific parsing.
-// Type3 fonts are user-defined fonts where each glyph is defined by a content stream.
-// They use an Encoding dictionary to map character codes to glyph names,
-// and a CharProcs dictionary to map glyph names to content streams.
-func (fm *FontManager) parseType3Font(font *Font, dict Dictionary) {
-	// Type3 fonts MUST have:
-	// - FontBBox: bounding box
-	// - FontMatrix: transformation matrix (usually [0.001 0 0 0.001 0 0])
-	// - CharProcs: dictionary mapping character names to content streams
-	// - Encoding: maps character codes to glyph names
-	// - FirstChar, LastChar, Widths: like simple fonts
-
-	// Parse FontMatrix (used for proper sizing)
-	if matrixArr, ok := dict[Name("FontMatrix")].(Array); ok && len(matrixArr) == 6 {
-		// FontMatrix is typically [0.001 0 0 0.001 0 0] for 1000 unit em square
-		// We don't need to store this for basic text extraction
-		_ = matrixArr
-	}
-
-	// Parse CharProcs to know which glyphs are defined
-	// We don't need to execute the content streams for text extraction,
-	// we just need to know the glyph names exist
-	if charProcsObj, ok := dict[Name("CharProcs")]; ok {
-		var charProcsDict Dictionary
-		if ref, ok := charProcsObj.(IndirectRef); ok {
-			obj, _ := fm.reader.ReadObject(ref.ObjectNumber)
-			if d, ok := obj.(Dictionary); ok {
-				charProcsDict = d
-			}
-		} else if d, ok := charProcsObj.(Dictionary); ok {
-			charProcsDict = d
-		}
-
-		// CharProcs dictionary has Name -> Stream mappings
-		// For text extraction, having the Encoding is usually sufficient
-		// But we can verify glyphs exist
-		if charProcsDict != nil {
-			// Log or validate CharProcs entries if needed
-			// For now, we rely on Encoding for character mapping
-			_ = charProcsDict
-		}
-	}
-
-	// For Type3 fonts without ToUnicode, we try to build a mapping from:
-	// Character code -> Encoding -> Glyph name -> GlyphToUnicode
-	// This is already handled in DecodeString via font.Encoding
-
-	// If Encoding doesn't provide useful names, try to extract from CharProcs keys
-	// This is a fallback for non-standard Type3 fonts
-	if len(font.Encoding) == 0 {
-		// Try to build encoding from CharProcs if present
-		if charProcsObj, ok := dict[Name("CharProcs")]; ok {
-			var charProcsDict Dictionary
-			if ref, ok := charProcsObj.(IndirectRef); ok {
-				obj, _ := fm.reader.ReadObject(ref.ObjectNumber)
-				if d, ok := obj.(Dictionary); ok {
-					charProcsDict = d
-				}
-			} else if d, ok := charProcsObj.(Dictionary); ok {
-				charProcsDict = d
-			}
-
-			if charProcsDict != nil && font.FirstChar >= 0 && font.LastChar >= font.FirstChar {
-				// Map character codes to glyph names in order
-				// This is a heuristic and may not be correct for all Type3 fonts
-				code := font.FirstChar
-				for name := range charProcsDict {
-					if code <= font.LastChar {
-						font.Encoding[code] = string(name)
-						code++
-					}
 				}
 			}
 		}
@@ -724,127 +648,88 @@ func (f *Font) writeSimple(res *strings.Builder, b byte) {
 	res.WriteByte(b)
 }
 
-func (f *Font) parseToUnicodeCMap(data []byte) {
-	// Simple parser for CMap
-	// We look for:
-	// <count> beginbfchar
-	// <code> <unicode>
-	// ...
-	// endbfchar
-	//
-	// <count> beginbfrange
-	// <start> <end> <unicode>
-	// ...
-	// endbfrange
-
-	// Tokenize the CMap
+// parseToUnicodeCMap reads a ToUnicode CMap (ISO 32000 §9.10.3): bfchar and
+// bfrange mappings, including multi-character destinations and arrays, for
+// codes of 1 to 4 bytes, plus its codespace ranges.
+func parseToUnicodeCMap(data []byte) (map[int]string, []codespace) {
+	m := make(map[int]string)
 	t := NewTokenizer(bytes.NewReader(data))
-
-	// fmt.Printf("Parsing CMap for %s\n", f.BaseFont)
-
-	for {
+	next := func() (Token, bool) {
 		tok, err := t.NextToken()
-		if err != nil {
+		return tok, err == nil
+	}
+	for {
+		tok, ok := next()
+		if !ok {
 			break
 		}
-
-		if tok.Value == "beginbfchar" {
-			// We need to know count. It was the previous token.
-			// But we didn't save it.
-			// Actually, we can just loop until endbfchar.
+		switch tok.Value {
+		case "beginbfchar":
 			for {
-				codeTok, err := t.NextToken()
-				if err != nil {
+				codeTok, ok := next()
+				if !ok || codeTok.Value == "endbfchar" {
 					break
 				}
-				if codeTok.Value == "endbfchar" {
+				uniTok, ok := next()
+				if !ok {
 					break
 				}
-
-				uniTok, err := t.NextToken()
-				if err != nil {
-					break
-				}
-
-				code := parseHexStringOrInt(codeTok)
-				uni := parseHexStringToString(uniTok)
-
-				f.ToUnicode[code] = uni
+				m[hexCode(codeTok)] = parseHexStringToString(uniTok)
 			}
-		} else if tok.Value == "beginbfrange" {
+		case "beginbfrange":
 			for {
-				startTok, err := t.NextToken()
-				if err != nil {
+				startTok, ok := next()
+				if !ok || startTok.Value == "endbfrange" {
 					break
 				}
-				if startTok.Value == "endbfrange" {
+				endTok, ok1 := next()
+				dstTok, ok2 := next()
+				if !ok1 || !ok2 {
 					break
 				}
-
-				endTok, err := t.NextToken()
-				if err != nil {
-					break
+				start, end := hexCode(startTok), hexCode(endTok)
+				if end < start || end-start > 0xFFFF {
+					continue
 				}
-
-				uniTok, err := t.NextToken()
-				if err != nil {
-					break
-				}
-
-				start := parseHexStringOrInt(startTok)
-				end := parseHexStringOrInt(endTok)
-
-				// uniTok can be <hex> (start unicode) or [ <hex> <hex> ... ] (array)
-				if uniTok.Type == TokenHexString {
-					// Range mapping: start->uni, start+1->uni+1 ...
-					// We need to increment the last byte of unicode string?
-					// Or treat unicode as integer?
-					// Unicode is usually UTF-16BE in hex string.
-					uniBase := parseHexStringToUTF16(uniTok.Value)
-					if len(uniBase) == 1 {
-						base := int(uniBase[0])
-						for c := start; c <= end; c++ {
-							f.ToUnicode[c] = string(rune(base + (c - start))) //nolint:gosec // CMap codepoint within Unicode range
-						}
+				switch dstTok.Type {
+				case TokenHexString:
+					// Increment the last UTF-16 unit of the destination.
+					units := utf16Units(dstTok.Value)
+					if len(units) == 0 {
+						continue
 					}
-				} else if uniTok.Type == TokenArrayStart {
-					// Array of destination codes
-					// [ <uni1> <uni2> ... ]
-					// We need to parse the array.
-					// Since our Tokenizer returns [ as token, we need to read until ]
-					c := start
-					for {
-						valTok, err := t.NextToken()
-						if err != nil {
+					for c := start; c <= end; c++ {
+						u := slices.Clone(units)
+						u[len(u)-1] += uint16(c - start) //nolint:gosec // G115: range bounded to 0xFFFF above
+						m[c] = string(utf16.Decode(u))
+					}
+				case TokenArrayStart:
+					for c := start; ; c++ {
+						v, ok := next()
+						if !ok || v.Type == TokenArrayEnd {
 							break
 						}
-						if valTok.Type == TokenArrayEnd {
-							break
-						}
-
-						uni := parseHexStringToString(valTok)
-						f.ToUnicode[c] = uni
-						c++
+						m[c] = parseHexStringToString(v)
 					}
 				}
 			}
 		}
 	}
+	return m, parseCodespace(data)
 }
 
-func parseHexStringOrInt(t Token) int {
-	if t.Type == TokenHexString {
-		// <001A> -> 0x1A
-		b, _ := hex.DecodeString(t.Value)
-		if len(b) == 1 {
-			return int(b[0])
-		} else if len(b) == 2 {
-			return int(b[0])<<8 | int(b[1])
-		}
+// hexCode reads a character code of up to 4 bytes from a hex string token.
+func hexCode(t Token) int {
+	if t.Type != TokenHexString {
+		i, _ := strconv.Atoi(t.Value)
+		return i
 	}
-	// Fallback
-	i, _ := strconv.Atoi(t.Value)
-	return i
+	b, _ := hex.DecodeString(t.Value)
+	v := 0
+	for _, x := range b[:min(len(b), 4)] {
+		v = v<<8 | int(x)
+	}
+	return v
 }
 
 func parseHexStringToString(t Token) string {
@@ -858,12 +743,17 @@ func parseHexStringToString(t Token) string {
 }
 
 func parseHexStringToUTF16(s string) []rune {
+	return utf16.Decode(utf16Units(s))
+}
+
+// utf16Units reads the UTF-16BE code units of a hex string.
+func utf16Units(s string) []uint16 {
 	b, _ := hex.DecodeString(s)
 	u16s := make([]uint16, len(b)/2)
-	for i := 0; i < len(u16s); i++ {
+	for i := range u16s {
 		u16s[i] = uint16(b[2*i])<<8 | uint16(b[2*i+1])
 	}
-	return utf16.Decode(u16s)
+	return u16s
 }
 
 // DecodeString decodes a string using the specified font
