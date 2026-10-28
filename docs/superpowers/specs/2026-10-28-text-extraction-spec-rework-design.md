@@ -34,6 +34,28 @@ Levenshtein on the raw Markdown, markup included. It rewards correct text
 and order, barely rewards structure, and slightly penalises plain-text
 tools. `pdftotext` still wins, so the loss is in extraction.
 
+Split by subset, with an order-insensitive check (word-multiset F1
+against ground truth, `\w+` tokens, lowercase) next to the Levenshtein
+score:
+
+| Subset | Levenshtein pdf2md / pdftotext | Word F1 pdf2md / pdftotext |
+|---|---|---|
+| GitHub (10) | 0.821 / 0.943 | 0.598 / 0.975 |
+| arXiv (10) | 0.724 / 0.778 | 0.894 / 0.917 |
+
+Reading of it:
+
+- **GitHub gap = extraction.** Words are wrong (glued), not misordered.
+  In scope.
+- **arXiv gap = mostly reading order.** Words are nearly right (0.894 vs
+  0.917), order is not. Example: `0709.4466` has word F1 0.932 vs 0.962
+  but Levenshtein 0.639 vs 0.864, because the two columns are interleaved.
+- **Reachability:** closing the GitHub gap fully gives an overall average
+  of about 0.834. The remaining arXiv gap is mostly reading order, which
+  is a non-goal below. **The criterion (0.861) is probably not reachable
+  without reading order. This scope question goes to the user before the
+  plan.**
+
 Corpus shape:
 
 - **GitHub subset (10 docs):** Chrome/Skia output. CID Type 0C fonts,
@@ -187,6 +209,10 @@ Each item cites the code and the documents it is known to affect.
 
 ## Order of work (proposed)
 
+0. Make the comparison durable: `cmd/benchmark` can score an arbitrary
+   output directory, and the per-document `pdftotext` scores are
+   committed with the poppler version. Without per-document targets,
+   "≥ pdftotext" cannot be checked one PR at a time.
 1. Text-state and glyph-advance core (deviations 2, 3, 4, 5, 6), with the
    per-glyph advance as the single source of truth for positions.
 2. Width sources (7, 8, 12) and code splitting (9).
