@@ -13,9 +13,8 @@ type GraphicsState struct {
 	Tl    float64 // Leading
 	Tf    Name    // Font name
 	Tfs   float64 // Font size
-	Tmode int     // Text rendering mode
-	Tr    float64 // Text rise
-	Ts    float64 // Text knockout (unused mostly)
+	Tmode int     // Text rendering mode, set by Tr
+	Ts    float64 // Text rise
 
 	// Path Construction
 	CurrentPath []types.PathOperation

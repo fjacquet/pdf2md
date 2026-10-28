@@ -103,6 +103,8 @@ func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
 		}
 	}
 
+	_, ownFonts := formResources[Name("Font")]
+
 	// If no Form Resources, use parent Resources
 	if formResources == nil {
 		formResources = in.Resources
@@ -132,9 +134,13 @@ func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
 	// CTM = CTM * FormMatrix
 	in.State.CTM = in.State.CTM.Multiply(formMatrix)
 
-	// Create a sub-interpreter for the Form content
-	// Note: We reuse the same FontManager as it contains all font definitions
-	subInterpreter := NewInterpreter(in.FontManager, formResources)
+	// Create a sub-interpreter for the Form content. A form that names its own
+	// fonts gets them on top of the page's, inside the form only.
+	fm := in.FontManager
+	if ownFonts && fm != nil {
+		fm = fm.Child(formResources)
+	}
+	subInterpreter := NewInterpreter(fm, formResources)
 
 	// Copy current CTM so Form content is positioned correctly
 	subInterpreter.State.CTM = in.State.CTM

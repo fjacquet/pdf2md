@@ -1,7 +1,10 @@
 package pdf
 
 import (
+	"math"
 	"testing"
+
+	"github.com/fjacquet/pdf2md/internal/types"
 )
 
 func TestInterpreter_HandleTextObject(t *testing.T) {
@@ -198,5 +201,98 @@ func TestInterpreter_TJWordGap(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// fixedWidthFont returns a simple font where every code has width w and the
+// space (32) has width 250, FirstChar 0.
+func fixedWidthFont(w float64) *Font {
+	widths := make([]float64, 256)
+	for i := range widths {
+		widths[i] = w
+	}
+	widths[32] = 250
+	return &Font{Subtype: "Type1", ToUnicode: map[int]string{}, Widths: widths, FirstChar: 0, LastChar: 255}
+}
+
+// runText interprets content with font F1: every byte has width 500 and the
+// space (32) has width 250, FirstChar 0. It returns the blocks.
+func runText(t *testing.T, content string) []types.TextBlock {
+	t.Helper()
+	fm := NewFontManager(nil)
+	fm.Fonts["F1"] = fixedWidthFont(500)
+	blocks, _, _, err := NewInterpreter(fm, nil).Process([]byte(content))
+	if err != nil {
+		t.Fatalf("Process(%q): %v", content, err)
+	}
+	return blocks
+}
+
+func near(t *testing.T, what string, got, want float64) {
+	t.Helper()
+	if math.Abs(got-want) > 1e-9 {
+		t.Errorf("%s = %v, want %v", what, got, want)
+	}
+}
+
+func TestAdvance_TcTz(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf 2 Tc 50 Tz 100 200 Td (AB) Tj (C) Tj ET")
+	near(t, "blocks[0].Width", b[0].Width, 7) // per glyph (0.5*10 + 2) * 0.5 = 3.5
+	near(t, "blocks[1].X", b[1].X, 107)
+}
+
+func TestAdvance_TwOnlyOnSpace(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf 3 Tw 0 0 Td (A A) Tj (B) Tj ET")
+	near(t, "blocks[1].X", b[1].X, 15.5) // 5 + (2.5 + 3) + 5
+}
+
+func TestAdvance_TJStringsAdvance(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf 0 0 Td [(A) -1000 (B)] TJ (C) Tj ET")
+	near(t, "blocks[1].X", b[1].X, 20)
+}
+
+func TestAdvance_NoDoubleScaling(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf 2 0 0 2 0 0 Tm (A) Tj (B) Tj ET")
+	near(t, "blocks[1].X", b[1].X, 10)
+	near(t, "blocks[0].FontSize", b[0].FontSize, 20)
+}
+
+func TestAdvance_CTM(t *testing.T) {
+	b := runText(t, "2 0 0 2 0 0 cm BT /F1 10 Tf (A) Tj (B) Tj ET")
+	near(t, "blocks[1].X", b[1].X, 10)
+}
+
+func TestTD_SetsLeading(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf 0 100 Td 0 -14 TD (A) Tj T* (B) Tj ET")
+	near(t, "blocks[0].Y", b[0].Y, 86)
+	near(t, "blocks[1].Y", b[1].Y, 72)
+}
+
+func TestRise(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf 5 Ts (A) Tj ET")
+	near(t, "blocks[0].Y", b[0].Y, 5)
+}
+
+func TestRenderMode(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf 3 Tr (A) Tj ET")
+	if b[0].RenderMode != 3 || b[0].Text != "A" {
+		t.Errorf("got RenderMode %d text %q, want 3 and \"A\"", b[0].RenderMode, b[0].Text)
+	}
+}
+
+func TestTJOnlyNumbers(t *testing.T) {
+	b := runText(t, "BT /F1 10 Tf [-1000] TJ (A) Tj ET")
+	if len(b) != 1 {
+		t.Fatalf("got %d blocks, want 1", len(b))
+	}
+	near(t, "blocks[0].X", b[0].X, 10)
+}
+
+func TestNegativeFontSize(t *testing.T) {
+	b := runText(t, "BT /F1 -10 Tf (AB) Tj ET")
+	near(t, "Width", b[0].Width, 10)
+	near(t, "FontSize", b[0].FontSize, 10)
+	if b[0].Text != "AB" {
+		t.Errorf("Text = %q, want \"AB\"", b[0].Text)
 	}
 }
