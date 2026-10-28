@@ -22,12 +22,17 @@ func (in *Interpreter) handleXObject(op string) error {
 			return fmt.Errorf("invalid operand for Do: expected Name")
 		}
 		in.Stack = in.Stack[:len(in.Stack)-1]
+		// A broken or missing XObject loses that object, never the page.
 		if err := in.processXObject(name); err != nil {
-			return err
+			log.Printf("Warning: skipping XObject %s: %v", name, err)
 		}
 	}
 	return nil
 }
+
+// maxFormDepth bounds nested Form XObjects. A form without /Resources
+// inherits its parent's, which may hold the form itself.
+const maxFormDepth = 32
 
 func (in *Interpreter) processXObject(name Name) error {
 	// Look up XObject in Resources
@@ -37,7 +42,7 @@ func (in *Interpreter) processXObject(name Name) error {
 	}
 
 	key := Name("XObject")
-	xObjectDict, ok := in.Resources[key].(Dictionary)
+	xObjectDict, ok := in.resolve(in.Resources[key]).(Dictionary)
 	if !ok {
 		// If Do is called but no XObject dict, it's an error in the PDF or our parsing.
 		// But we shouldn't crash or fail the page if possible.
@@ -88,6 +93,9 @@ func (in *Interpreter) processXObject(name Name) error {
 
 // processFormXObject handles Form XObjects which contain nested content streams
 func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
+	if in.formDepth >= maxFormDepth {
+		return fmt.Errorf("form nesting deeper than %d", maxFormDepth)
+	}
 	// Get the Form's Resources dictionary (may inherit from parent)
 	var formResources Dictionary
 	if res, ok := stream.Dictionary[Name("Resources")].(Dictionary); ok {
@@ -131,9 +139,8 @@ func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
 	// Save current graphics state
 	in.StateStack = append(in.StateStack, in.State)
 
-	// Apply the Form's Matrix to CTM
-	// CTM = CTM * FormMatrix
-	in.State.CTM = in.State.CTM.Multiply(formMatrix)
+	// The form's Matrix applies before the current CTM (§8.10.1), as for cm.
+	in.State.CTM = formMatrix.Multiply(in.State.CTM)
 
 	// Create a sub-interpreter for the Form content. A form that names its own
 	// fonts gets them on top of the page's, inside the form only.
@@ -142,6 +149,7 @@ func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
 		fm = fm.Child(formResources)
 	}
 	subInterpreter := NewInterpreter(fm, formResources)
+	subInterpreter.formDepth = in.formDepth + 1
 
 	// Copy current CTM so Form content is positioned correctly
 	subInterpreter.State.CTM = in.State.CTM
@@ -648,4 +656,13 @@ func cmykToRGB(c, m, y, k byte) (r, g, b byte) {
 	g = byte((1 - mf) * (1 - kf) * 255)
 	b = byte((1 - yf) * (1 - kf) * 255)
 	return
+}
+
+// resolve follows an indirect reference through the document reader, when
+// there is one.
+func (in *Interpreter) resolve(obj Object) Object {
+	if in.FontManager == nil {
+		return obj
+	}
+	return in.FontManager.resolve(obj)
 }
