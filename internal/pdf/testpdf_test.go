@@ -31,4 +31,3 @@ func writeTestPDF(t *testing.T, objs ...string) string {
 	}
 	return path
 }
-
