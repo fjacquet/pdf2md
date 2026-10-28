@@ -14,6 +14,8 @@ type TextBlock struct {
 	FontSize float64
 	FontName string
 	LinkURI  string
+	// RenderMode is the Tr text rendering mode (0–7); 3 is invisible text, as in OCR layers.
+	RenderMode int
 }
 
 // Image represents an extracted image

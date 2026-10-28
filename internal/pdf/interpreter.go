@@ -84,11 +84,11 @@ func (in *Interpreter) executeOperatorWithTokenizer(op string, tokenizer *Tokeni
 		return in.handleTextObject(op)
 
 	// Text State
-	case "Tf", "Tc", "Tw", "Tz", "TL", "Ts":
+	case "Tf", "Tc", "Tw", "Tz", "TL", "Ts", "Tr":
 		return in.handleTextState(op)
 
 	// Text Positioning
-	case "Td", "Tm", "T*":
+	case "Td", "TD", "Tm", "T*":
 		return in.handleTextPosition(op)
 
 	// Text Showing

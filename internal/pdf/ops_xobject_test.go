@@ -97,3 +97,33 @@ func TestInterpreter_ExtractImage_Filters(t *testing.T) {
 		t.Errorf("Expected jpeg format, got %s", in.Images[0].Format)
 	}
 }
+
+// A form's own /Resources /Font overrides the page font of the same name,
+// inside the form only.
+func TestFormFonts(t *testing.T) {
+	fm := NewFontManager(nil)
+	fm.Fonts["F1"] = fixedWidthFont(500)
+	wide := Dictionary{
+		Name("Type"): Name("Font"), Name("Subtype"): Name("Type1"), Name("BaseFont"): Name("Wide"),
+		Name("FirstChar"): Integer(65), Name("LastChar"): Integer(66),
+		Name("Widths"): Array{Integer(1000), Integer(1000)},
+	}
+	form := Stream{
+		Dictionary: Dictionary{
+			Name("Type"): Name("XObject"), Name("Subtype"): Name("Form"),
+			Name("Resources"): Dictionary{Name("Font"): Dictionary{Name("F1"): wide}},
+		},
+		Data: []byte("BT /F1 10 Tf (AB) Tj ET"),
+	}
+	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form}}
+	blocks, _, _, err := NewInterpreter(fm, page).Process([]byte("/Fm1 Do BT /F1 10 Tf (AB) Tj ET"))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("got %d blocks, want 2", len(blocks))
+	}
+	if blocks[0].Width != 20 || blocks[1].Width != 10 {
+		t.Errorf("widths = %v, %v; want 20 (form font) and 10 (page font)", blocks[0].Width, blocks[1].Width)
+	}
+}

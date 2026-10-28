@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Text positions follow ISO 32000 §9.4.4: every glyph advances by its width plus `Tc`, `Tw` (on single-byte code 32) and `Tz`, strings inside `TJ` advance the pen, and `TD`, `Ts` (rise) and `Tr` (render mode, kept on `TextBlock.RenderMode`) are honoured. Line extents now match `pdftotext -bbox-layout` within 0.01 pt. READoc average 0.834 -> 0.836.
+- Form XObjects that declare their own `/Resources /Font` now decode their text with those fonts instead of the page's.
+
 ## [0.3.0] - 2026-10-28
 
 ### Changed

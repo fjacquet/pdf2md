@@ -37,15 +37,17 @@ The parser is located in `internal/pdf` and consists of the following components
 
 ### 3.3. Content Stream Interpretation
 
-- **Text State**: Tracks Text Matrix (`Tm`), Text Line Matrix (`Tlm`), Font (`Tf`), Font Size (`Tfs`), and Leading (`Tl`).
+- **Text State**: Tracks Text Matrix (`Tm`), Text Line Matrix (`Tlm`), Font (`Tf`), Font Size (`Tfs`), Leading (`TL`), Character and Word Spacing (`Tc`, `Tw`), Horizontal Scaling (`Tz`), Rise (`Ts`) and Rendering Mode (`Tr`).
+- **Glyph advance** (ISO 32000 §9.4.4): each glyph moves `Tm` by `tx = (w0/1000·Tfs + Tc + Tw·[single-byte code 32]) · Th/100`; a `TJ` number `n` moves it by `−n/1000·Tfs·Th/100`. A block's `X`/`Width` span its text origins in user space (through `Tm` and the CTM).
 - **Operators**:
   - `BT`, `ET`: Begin/End Text object.
-  - `Tf`: Set font and size.
-  - `Td`, `TD`, `T*`: Move text position.
+  - `Tf`, `Tc`, `Tw`, `Tz`, `TL`, `Ts`, `Tr`: Set text state.
+  - `Td`, `TD`, `T*`: Move text position (`TD` also sets the leading).
   - `Tm`: Set text matrix.
   - `Tj`, `TJ`, `'`, `"`: Show text (with and without positioning/spacing).
-  - `q`, `Q`: Save/Restore graphics state (partial support).
-  - `cm`: Concatenate matrix (partial support).
+  - `q`, `Q`: Save/Restore graphics state.
+  - `cm`: Concatenate matrix.
+  - `Do`: Form XObjects run in a sub-interpreter; fonts in the form's own `/Resources` override the page's inside the form.
 
 ### 3.4. Font Handling
 

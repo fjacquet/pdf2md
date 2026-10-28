@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"log"
+	"maps"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -34,6 +36,16 @@ func NewFontManager(r *Reader) *FontManager {
 		Fonts:  make(map[Name]*Font),
 		reader: r,
 	}
+}
+
+// Child returns a font manager holding fm's fonts overlaid with the fonts of
+// resources, for a form XObject that names its own fonts.
+func (fm *FontManager) Child(resources Dictionary) *FontManager {
+	child := &FontManager{Fonts: maps.Clone(fm.Fonts), reader: fm.reader}
+	if err := child.LoadFonts(resources); err != nil {
+		log.Printf("Warning: failed to load form fonts: %v", err)
+	}
+	return child
 }
 
 // LoadFonts loads fonts from the page resources

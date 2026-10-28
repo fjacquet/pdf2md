@@ -1,7 +1,6 @@
 package pdf
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
 	"strings"
@@ -22,7 +21,7 @@ func (in *Interpreter) handleTextObject(op string) error {
 	return nil
 }
 
-// handleTextState handles Tf, Tc, Tw, Tz, TL, Ts
+// handleTextState handles Tf, Tc, Tw, Tz, TL, Ts, Tr
 func (in *Interpreter) handleTextState(op string) error {
 	switch op {
 	case "Tf": // Set Text Font and Size: font size Tf
@@ -74,20 +73,30 @@ func (in *Interpreter) handleTextState(op string) error {
 		}
 		in.State.Ts = toFloat(in.Stack[len(in.Stack)-1])
 		in.Stack = in.Stack[:len(in.Stack)-1]
+
+	case "Tr": // Set text rendering mode
+		if len(in.Stack) < 1 {
+			return fmt.Errorf("stack underflow for Tr")
+		}
+		in.State.Tmode = int(toFloat(in.Stack[len(in.Stack)-1]))
+		in.Stack = in.Stack[:len(in.Stack)-1]
 	}
 	return nil
 }
 
-// handleTextPosition handles Td, Tm, T*
+// handleTextPosition handles Td, TD, Tm, T*
 func (in *Interpreter) handleTextPosition(op string) error {
 	switch op {
-	case "Td": // Move text position: tx ty Td
+	case "Td", "TD": // Move text position: tx ty Td; TD also sets the leading to -ty
 		if len(in.Stack) < 2 {
-			return fmt.Errorf("stack underflow for Td")
+			return fmt.Errorf("stack underflow for %s", op)
 		}
 		ty := toFloat(in.Stack[len(in.Stack)-1])
 		tx := toFloat(in.Stack[len(in.Stack)-2])
 		in.Stack = in.Stack[:len(in.Stack)-2]
+		if op == "TD" {
+			in.State.Tl = -ty
+		}
 
 		// Update Tlm
 		// Tlm = [1 0 0 1 tx ty] * Tlm
@@ -145,58 +154,31 @@ func (in *Interpreter) handleTextShow(op string) error {
 		in.Stack = in.Stack[:len(in.Stack)-1]
 
 		if arr, ok := arrObj.(Array); ok {
-			// Process TJ array more intelligently:
-			// - Small adjustments are kerning within words
-			// - Adjustments wider than types.WordGapEm are word spaces
-			// Collect text and only split on word spaces
-			var textBuffer string
-			var rawBuffer string
-			startX := in.Tm[4]
-			startY := in.Tm[5]
-
+			// One block per TJ. Strings advance glyph by glyph, numbers move
+			// the pen by -n/1000 em; offsets wider than types.WordGapEm are
+			// word spaces, smaller ones are kerning.
+			x0, y0 := in.textOrigin()
+			var text strings.Builder
 			for _, item := range arr {
-				if s, ok := item.(StringLiteral); ok {
-					rawBuffer += string(s)
-					textBuffer += in.decodeText(string(s))
-				} else if s, ok := item.(HexString); ok {
-					b, _ := hex.DecodeString(string(s))
-					rawBuffer += string(b)
-					textBuffer += in.decodeText(string(b))
-				} else if n, ok := item.(Integer); ok {
-					// Adjustment value in thousandths of em
-					// Positive = move left (tightening), Negative = move right (spacing)
-					if isTJWordGap(float64(n), textBuffer) {
-						// This is a word space - insert space in text
-						textBuffer += " "
+				switch v := item.(type) {
+				case StringLiteral, HexString:
+					raw, err := stringBytes(v)
+					if err != nil {
+						continue
 					}
-					// Apply position adjustment
-					adj := -float64(n) / 1000.0 * in.State.Tfs
-					in.Tm[4] += adj * in.Tm[0]
-					in.Tm[5] += adj * in.Tm[1]
-				} else if f, ok := item.(Real); ok {
-					if isTJWordGap(float64(f), textBuffer) {
-						textBuffer += " "
+					t, _ := in.showString(raw)
+					text.WriteString(t)
+				case Integer, Real:
+					n := toFloat(v)
+					if text.Len() > 0 && isTJWordGap(n, text.String()) {
+						text.WriteString(" ")
 					}
-					adj := -float64(f) / 1000.0 * in.State.Tfs
-					in.Tm[4] += adj * in.Tm[0]
-					in.Tm[5] += adj * in.Tm[1]
+					in.Tm = Matrix{1, 0, 0, 1, -n / 1000 * in.State.Tfs * in.State.Th / 100, 0}.Multiply(in.Tm)
 				}
 			}
-
-			// Create single text block for entire TJ array
-			if textBuffer != "" {
-				// Restore start position for block creation
-				savedTmX, savedTmY := in.Tm[4], in.Tm[5]
-				in.Tm[4], in.Tm[5] = startX, startY
-
-				width := 0.0
-				if in.FontManager != nil && rawBuffer != "" {
-					width = in.FontManager.CalculateWidth(in.State.Tf, rawBuffer) * in.State.Tfs / 1000.0
-				}
-				in.addTextBlock(textBuffer, width)
-
-				// Restore end position
-				in.Tm[4], in.Tm[5] = savedTmX, savedTmY
+			if text.Len() > 0 {
+				x1, _ := in.textOrigin()
+				in.addTextBlock(text.String(), x0, y0, x1-x0)
 			}
 		}
 
@@ -245,76 +227,78 @@ func (in *Interpreter) handleTextShow(op string) error {
 }
 
 func (in *Interpreter) showText(obj Object) error {
-	text := ""
-	rawText := ""
-	if s, ok := obj.(StringLiteral); ok {
-		rawText = string(s)
-	} else if s, ok := obj.(HexString); ok {
-		b, _ := hex.DecodeString(string(s))
-		rawText = string(b)
-	} else {
-		return fmt.Errorf("invalid operand for text show operator: expected StringLiteral or HexString")
+	raw, err := stringBytes(obj)
+	if err != nil {
+		return fmt.Errorf("invalid operand for text show operator: %w", err)
 	}
-
-	text = in.decodeText(rawText)
-
-	width := 0.0
-	if in.FontManager != nil {
-		width = in.FontManager.CalculateWidth(in.State.Tf, rawText) * in.State.Tfs / 1000.0
-	}
-
-	realWidth := in.addTextBlock(text, width)
-
-	// Update Tm
-	// tx = width, ty = 0
-	// Tm is [a b c d e f]
-	// e += tx * a + ty * c = width * a
-	// f += tx * b + ty * d = width * b
-	in.Tm[4] += realWidth * in.Tm[0]
-	in.Tm[5] += realWidth * in.Tm[1]
+	x0, y0 := in.textOrigin()
+	text, width := in.showString(raw)
+	in.addTextBlock(text, x0, y0, width)
 	return nil
 }
 
-func (in *Interpreter) addTextBlock(text string, width float64) float64 {
-	// Calculate position
-	// Text space origin (0,0) -> User space
-	// First transform by Tm (Text Matrix)
-	tx, ty := in.Tm.Transform(0, 0)
+// showString decodes raw and advances Tm glyph by glyph (ISO 32000 §9.4.4):
+// tx = (w0/1000·Tfs + Tc + Tw·[single-byte code 32]) · Th/100. It returns the
+// text and the signed horizontal advance of the text origin in user space.
+func (in *Interpreter) showString(raw []byte) (string, float64) {
+	x0, _ := in.textOrigin()
+	composite := false
+	if in.FontManager != nil {
+		if f, ok := in.FontManager.Fonts[in.State.Tf]; ok {
+			composite = f.Subtype == "Type0"
+		}
+	}
+	// shortcut: composite fonts are read as 2-byte codes; Task 3 splits codes by the CMap codespace.
+	step := 1
+	if composite {
+		step = 2
+	}
+	for i := 0; i+step <= len(raw); i += step {
+		code := int(raw[i])
+		if step == 2 {
+			code = code<<8 | int(raw[i+1])
+		}
+		tx := in.glyphWidth(code)/1000*in.State.Tfs + in.State.Tc
+		if step == 1 && code == 32 {
+			tx += in.State.Tw
+		}
+		in.Tm = Matrix{1, 0, 0, 1, tx * in.State.Th / 100, 0}.Multiply(in.Tm)
+	}
+	x1, _ := in.textOrigin()
+	return in.decodeText(string(raw)), x1 - x0
+}
 
-	// Then transform by CTM (Current Transformation Matrix)
-	x, y := in.State.CTM.Transform(tx, ty)
+// glyphWidth is the width of code in thousandths of em, 500 when the font or
+// its width is unknown so that glyphs still advance.
+// shortcut: temporary, Task 3 replaces it with the spec-ordered Font.Width.
+func (in *Interpreter) glyphWidth(code int) float64 {
+	if in.FontManager != nil {
+		if f, ok := in.FontManager.Fonts[in.State.Tf]; ok {
+			if w := f.GetWidth(code); w != 0 {
+				return w
+			}
+		}
+	}
+	return 500
+}
 
-	estimatedWidth := width
-	if estimatedWidth == 0 {
-		// Estimate width since we don't have font metrics
-		// Average char width is usually ~0.25-0.3 * FontSize for variable width fonts
-		estimatedWidth = float64(len(text)) * in.State.Tfs * 0.25
+// textOrigin is the text origin, raised by Ts, in user space.
+func (in *Interpreter) textOrigin() (float64, float64) {
+	tx, ty := in.Tm.Transform(0, in.State.Ts)
+	return in.State.CTM.Transform(tx, ty)
+}
+
+// addTextBlock appends a block starting at (x, y) in user space with signed
+// horizontal advance dx (negative for mirrored text).
+func (in *Interpreter) addTextBlock(text string, x, y, dx float64) {
+	if dx < 0 {
+		x += dx
+		dx = -dx
 	}
 
-	// Transform width to user space
-	// We need to transform the vector (width, 0) by Tm then CTM
-	// Vector transform: [w 0 0] * Tm * CTM
-	// Or simply: p1 = (0,0), p2 = (width, 0). Transform both. Dist = p2 - p1.
-
-	// Point (width, 0) in text space
-	tx2, _ := in.Tm.Transform(estimatedWidth, 0)
-	x2, _ := in.State.CTM.Transform(tx2, 0)
-
-	finalWidth := x2 - x
-	// finalHeight := y2 - y // Not really height, but change in Y
-
-	// Normalize X and Width if Width is negative (flipped axis)
-	if finalWidth < 0 {
-		x += finalWidth
-		finalWidth = -finalWidth
-	}
-
-	// Height is usually font size in user space
-	// Transform (0, Tfs)
-	tx3, ty3 := in.Tm.Transform(0, in.State.Tfs)
-	x3, y3 := in.State.CTM.Transform(tx3, ty3)
-	dx, dy := x3-x, y3-y
-	finalFontSize := math.Sqrt(dx*dx + dy*dy)
+	// Font size is the length of the (0, Tfs) text-space vector in user space.
+	m := in.Tm.Multiply(in.State.CTM)
+	fontSize := math.Hypot(in.State.Tfs*m[2], in.State.Tfs*m[3])
 
 	// Get real font name
 	fontName := string(in.State.Tf)
@@ -327,16 +311,15 @@ func (in *Interpreter) addTextBlock(text string, width float64) float64 {
 	}
 
 	in.TextBlocks = append(in.TextBlocks, types.TextBlock{
-		Text:     text,
-		X:        x,
-		Y:        y,
-		Width:    finalWidth,
-		Height:   finalFontSize,
-		FontSize: finalFontSize,
-		FontName: fontName,
+		Text:       text,
+		X:          x,
+		Y:          y,
+		Width:      dx,
+		Height:     fontSize,
+		FontSize:   fontSize,
+		FontName:   fontName,
+		RenderMode: in.State.Tmode,
 	})
-
-	return estimatedWidth
 }
 
 func (in *Interpreter) decodeText(s string) string {
