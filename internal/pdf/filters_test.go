@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"bytes"
+	"compress/zlib"
 	"errors"
 	"testing"
 )
@@ -321,5 +322,43 @@ func TestDecodeStream_CryptIdentity(t *testing.T) {
 	}
 	if !bytes.Equal(out, raw) {
 		t.Errorf("Crypt changed bytes: got %q", out)
+	}
+}
+
+func withDecodeLimit(t *testing.T, n int64) {
+	t.Helper()
+	old := maxDecodedStream
+	maxDecodedStream = n
+	t.Cleanup(func() { maxDecodedStream = old })
+}
+
+// A small compressed stream may expand to gigabytes (1 MB held 1 GiB of
+// zeros in the audit reproduction): decoding stops at maxDecodedStream.
+func TestDecodeFlate_Limit(t *testing.T) {
+	withDecodeLimit(t, 1<<10)
+	compress := func(n int) []byte {
+		var b bytes.Buffer
+		w := zlib.NewWriter(&b)
+		_, _ = w.Write(make([]byte, n))
+		_ = w.Close()
+		return b.Bytes()
+	}
+	if _, err := decodeFlate(compress(4 << 10)); !errors.Is(err, ErrStreamTooLarge) {
+		t.Errorf("4 KiB under a 1 KiB limit: err = %v, want ErrStreamTooLarge", err)
+	}
+	if out, err := decodeFlate(compress(512)); err != nil || len(out) != 512 {
+		t.Errorf("512 B under a 1 KiB limit: len %d, err %v; want 512, nil", len(out), err)
+	}
+}
+
+func TestDecodeLZW_Limit(t *testing.T) {
+	two := []byte{0x80, 0x20, 0x82, 0x10, 0x10} // decodes to 2 bytes, see TestDecodeLZW
+	withDecodeLimit(t, 1)
+	if _, err := decodeLZW(two, nil); !errors.Is(err, ErrStreamTooLarge) {
+		t.Errorf("2 bytes under a 1-byte limit: err = %v, want ErrStreamTooLarge", err)
+	}
+	withDecodeLimit(t, 2)
+	if out, err := decodeLZW(two, nil); err != nil || len(out) != 2 {
+		t.Errorf("2 bytes under a 2-byte limit: %q, %v; want 2 bytes, nil", out, err)
 	}
 }

@@ -14,6 +14,16 @@ import (
 // missing, keep extracting the rest of the page).
 var ErrFilterUnsupported = errors.New("pdf: filter unsupported")
 
+// ErrStreamTooLarge is returned when a stream decodes to more than
+// maxDecodedStream bytes.
+var ErrStreamTooLarge = errors.New("pdf: decoded stream too large")
+
+// maxDecodedStream caps one decoded Flate or LZW stream. It sits above a
+// legitimate image (an RGB letter page at 600 dpi is about 100 MB) and below
+// what a small compressed stream can expand to (1 MB can hold 1 GiB).
+// shortcut: per-stream cap only; the total across streams is unbounded, add a document budget if batch ingestion needs one.
+var maxDecodedStream int64 = 256 << 20
+
 // DecodeStream decodes a stream based on its filter and optional parameters
 func DecodeStream(data []byte, filter Name, params Dictionary) ([]byte, error) {
 	var decoded []byte
@@ -156,7 +166,14 @@ func decodeFlate(data []byte) ([]byte, error) {
 	}
 	defer func() { _ = r.Close() }()
 
-	return io.ReadAll(r)
+	out, err := io.ReadAll(io.LimitReader(r, maxDecodedStream+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(out)) > maxDecodedStream {
+		return nil, fmt.Errorf("%w: FlateDecode over %d bytes", ErrStreamTooLarge, maxDecodedStream)
+	}
+	return out, nil
 }
 
 func applyPredictor(data []byte, predictor, columns, colors, bpc int) ([]byte, error) {
@@ -550,6 +567,9 @@ func (d *lzwDecoder) decode() ([]byte, error) {
 		}
 
 		out.Write(seq)
+		if int64(out.Len()) > maxDecodedStream {
+			return nil, fmt.Errorf("%w: LZWDecode over %d bytes", ErrStreamTooLarge, maxDecodedStream)
+		}
 
 		// Add new entry to table
 		if prevSeq != nil && d.nextCode <= lzwMaxCode {
