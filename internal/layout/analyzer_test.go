@@ -84,6 +84,31 @@ func TestMergeElements(t *testing.T) {
 	}
 }
 
+// TestMergeElements_WordGap pins the same-line gap read as a word space:
+// a 0.2 em gap (a real space is about 0.25 em) must not glue words.
+func TestMergeElements_WordGap(t *testing.T) {
+	tests := []struct {
+		name string
+		gap  float64
+		want string
+	}{
+		{"space-sized gap", 0.2 * 10, "or ENV"},
+		{"kerning-sized gap", 0.05 * 10, "orENV"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			elements := []Element{
+				{Type: ElementTypeParagraph, Content: "or", Y: 100, X: 10, Width: 10, FontSize: 10},
+				{Type: ElementTypeParagraph, Content: "ENV", Y: 100, X: 20 + tt.gap, Width: 15, FontSize: 10},
+			}
+			merged := NewAnalyzer().MergeElements(elements)
+			if len(merged) != 1 || merged[0].Content != tt.want {
+				t.Errorf("got %+v, want one element %q", merged, tt.want)
+			}
+		})
+	}
+}
+
 func TestClassifyElement(t *testing.T) {
 	analyzer := NewAnalyzer()
 	// analyzer.ColumnGapThreshold = 10.0 // Removed

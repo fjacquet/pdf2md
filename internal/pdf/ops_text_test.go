@@ -171,3 +171,32 @@ func TestInterpreter_HandleTextShow(t *testing.T) {
 		t.Errorf("Quote did not set spacing: %v", in.State)
 	}
 }
+
+// TestInterpreter_TJWordGap pins the TJ offset read as a word space:
+// Chrome writes spaces as -166..-265, kerning stays within a few dozen units.
+func TestInterpreter_TJWordGap(t *testing.T) {
+	tests := []struct {
+		name string
+		arr  Array
+		want string
+	}{
+		{"chrome space", Array{StringLiteral("A"), Integer(-199), StringLiteral("B")}, "A B"},
+		{"justified space", Array{StringLiteral("A"), Real(-166.4), StringLiteral("B")}, "A B"},
+		{"kerning", Array{StringLiteral("A"), Integer(-48), StringLiteral("B")}, "AB"},
+		{"tightening", Array{StringLiteral("A"), Integer(50), StringLiteral("B")}, "AB"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := NewInterpreter(nil, nil)
+			_ = in.handleTextObject("BT")
+			in.State.Tfs = 12
+			in.Stack = []Object{tt.arr}
+			if err := in.handleTextShow("TJ"); err != nil {
+				t.Fatalf("TJ failed: %v", err)
+			}
+			if got := in.TextBlocks[0].Text; got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
