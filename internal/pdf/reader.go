@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 )
 
@@ -654,6 +655,11 @@ func isMetadataStream(d Dictionary) bool {
 }
 
 func (r *Reader) readCompressedObject(streamObjNum, index int) (Object, error) {
+	// §7.5.7: an object stream is never itself compressed; following one that
+	// claims to be would recurse forever.
+	if r.XrefTable[streamObjNum].Type == 2 {
+		return nil, fmt.Errorf("object stream %d is inside an object stream", streamObjNum)
+	}
 	// Read the stream object
 	obj, err := r.ReadObject(streamObjNum)
 	if err != nil {
@@ -789,7 +795,7 @@ func (r *Reader) GetPage(pageIndex int) (Dictionary, error) {
 	}
 
 	// Start traversal
-	page, err := r.traversePageTree(pagesRef, &pageIndex)
+	page, err := r.traversePageTree(pagesRef, &pageIndex, Dictionary{}, map[int]bool{})
 	if err != nil {
 		return nil, err
 	}
@@ -799,7 +805,19 @@ func (r *Reader) GetPage(pageIndex int) (Dictionary, error) {
 	return page, nil
 }
 
-func (r *Reader) traversePageTree(ref IndirectRef, pageIndex *int) (Dictionary, error) {
+// inheritablePageKeys may sit on a /Pages ancestor instead of the page
+// (ISO 32000 §7.7.3.4).
+var inheritablePageKeys = []Name{"Resources", "MediaBox", "CropBox", "Rotate"}
+
+// traversePageTree finds the pageIndex-th leaf below ref. inherited holds the
+// inheritable keys of the ancestors; visited refuses a node seen twice, so a
+// /Kids cycle is an error instead of a stack overflow.
+func (r *Reader) traversePageTree(ref IndirectRef, pageIndex *int, inherited Dictionary, visited map[int]bool) (Dictionary, error) {
+	if visited[ref.ObjectNumber] {
+		return nil, fmt.Errorf("page tree cycle at object %d", ref.ObjectNumber)
+	}
+	visited[ref.ObjectNumber] = true
+
 	obj, err := r.ReadObject(ref.ObjectNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read page tree node: %w", err)
@@ -819,7 +837,13 @@ func (r *Reader) traversePageTree(ref IndirectRef, pageIndex *int) (Dictionary, 
 		// Found a leaf node
 		(*pageIndex)--
 		if *pageIndex == 0 {
-			return dict, nil
+			page := maps.Clone(dict)
+			for k, v := range inherited {
+				if page[k] == nil {
+					page[k] = v
+				}
+			}
+			return page, nil
 		}
 		return nil, nil // Not this page
 	}
@@ -831,13 +855,20 @@ func (r *Reader) traversePageTree(ref IndirectRef, pageIndex *int) (Dictionary, 
 			return nil, fmt.Errorf("missing /Kids in pages node")
 		}
 
+		inh := maps.Clone(inherited)
+		for _, k := range inheritablePageKeys {
+			if v, ok := dict[k]; ok {
+				inh[k] = v
+			}
+		}
+
 		for _, kid := range kids {
 			kidRef, ok := kid.(IndirectRef)
 			if !ok {
 				return nil, fmt.Errorf("kid is not a reference")
 			}
 
-			page, err := r.traversePageTree(kidRef, pageIndex)
+			page, err := r.traversePageTree(kidRef, pageIndex, inh, visited)
 			if err != nil {
 				return nil, err
 			}
