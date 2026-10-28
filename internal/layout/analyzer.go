@@ -343,14 +343,15 @@ func (a *Analyzer) blocksToElements(blocks []extractor.TextBlock) []Element {
 		}
 
 		element := Element{
-			Content:  content,
-			X:        block.X,
-			Y:        block.Y,
-			Width:    block.Width,
-			Height:   block.Height,
-			FontSize: block.FontSize,
-			Type:     ElementTypeParagraph,
-			LinkURI:  block.LinkURI,
+			Content:    content,
+			X:          block.X,
+			Y:          block.Y,
+			Width:      block.Width,
+			Height:     block.Height,
+			FontSize:   block.FontSize,
+			SpaceWidth: block.SpaceWidth,
+			Type:       ElementTypeParagraph,
+			LinkURI:    block.LinkURI,
 		}
 		elements = append(elements, element)
 	}

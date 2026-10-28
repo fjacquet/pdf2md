@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Word spaces are decided against each font's own space width (half of it), for TJ offsets and same-line gaps alike, instead of a fixed 0.125 em. Fonts without a space glyph (pdfTeX, FirstChar above 32) fall back to 250/1000 em instead of taking `/MissingWidth`, and WinAnsi's second `space` (code 160) no longer wins at random. `TextBlock.SpaceWidth` carries the width in user space.
 - Glyph widths follow the spec order: `/W` and `/DW` for composite fonts; `/Widths`, `/MissingWidth`, then the standard 14 metrics (generated from Adobe's Core14 AFM files) for simple fonts; Type 3 widths scaled by `FontMatrix`. Composite fonts split codes by their encoding CMap's codespace. Standard fonts without `/Widths` (e.g. Times-Roman in TeX output) no longer overlap the next word.
 - Text positions follow ISO 32000 §9.4.4: every glyph advances by its width plus `Tc`, `Tw` (on single-byte code 32) and `Tz`, strings inside `TJ` advance the pen, and `TD`, `Ts` (rise) and `Tr` (render mode, kept on `TextBlock.RenderMode`) are honoured. Line extents now match `pdftotext -bbox-layout` within 0.01 pt. READoc average 0.834 -> 0.836.
 - Form XObjects that declare their own `/Resources /Font` now decode their text with those fonts instead of the page's.

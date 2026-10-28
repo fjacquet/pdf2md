@@ -1,9 +1,11 @@
 package types //nolint:revive // Package name "types" is a common pattern for shared types
 
-// WordGapEm is the smallest gap, in em, read as a word space: half of a
-// typical 0.25 em space glyph.
-// shortcut: assumes a 0.25 em space for every font; use the font's own space width once font widths follow the spec.
-const WordGapEm = 0.125
+// IsWordGap reports whether a gap between two glyphs is a word space: more
+// than half the font's own space width. Kerning stays below it, an
+// inter-word space (even a justified, shrunk one) stays above.
+func IsWordGap(gap, spaceWidth float64) bool {
+	return gap > 0.5*spaceWidth
+}
 
 // TextBlock represents a block of text with its position and font information
 type TextBlock struct {
@@ -14,6 +16,8 @@ type TextBlock struct {
 	FontSize float64
 	FontName string
 	LinkURI  string
+	// SpaceWidth is the font's space width in user space at this size, 0 when unknown (OCR).
+	SpaceWidth float64
 	// RenderMode is the Tr text rendering mode (0–7); 3 is invisible text, as in OCR layers.
 	RenderMode int
 }

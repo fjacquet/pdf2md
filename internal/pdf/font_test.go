@@ -235,3 +235,34 @@ func TestCodes_IdentityH(t *testing.T) {
 		t.Errorf("Codes() = %v, want %v", got, want)
 	}
 }
+
+// A font without a space glyph (pdfTeX: FirstChar above 32, MissingWidth 500)
+// must not take MissingWidth as its space width.
+func TestSpaceWidth_NoSpaceGlyph(t *testing.T) {
+	f := mustParseFont(t, Dictionary{
+		Name("Subtype"): Name("Type1"), Name("BaseFont"): Name("ABCDEF+CMTI10"), Name("Encoding"): Name("WinAnsiEncoding"),
+		Name("FirstChar"): Integer(34), Name("LastChar"): Integer(34), Name("Widths"): Array{Integer(511)},
+		Name("FontDescriptor"): Dictionary{Name("MissingWidth"): Integer(500)},
+	})
+	if w := f.SpaceWidth(); w != 250 {
+		t.Errorf("SpaceWidth() = %v, want 250 (no space glyph)", w)
+	}
+}
+
+// WinAnsi names both 32 and 160 "space": the space width is code 32's, every time.
+func TestSpaceWidth_WinAnsiPicksCode32(t *testing.T) {
+	widths := make(Array, 256-32)
+	for i := range widths {
+		widths[i] = Integer(900)
+	}
+	widths[0] = Integer(0) // pdfTeX CMR: code 32 present with width 0
+	f := mustParseFont(t, Dictionary{
+		Name("Subtype"): Name("Type1"), Name("BaseFont"): Name("ABCDEF+CMR10"), Name("Encoding"): Name("WinAnsiEncoding"),
+		Name("FirstChar"): Integer(32), Name("LastChar"): Integer(255), Name("Widths"): widths,
+	})
+	for range 20 {
+		if w := f.SpaceWidth(); w != 250 {
+			t.Fatalf("SpaceWidth() = %v, want 250 (code 32 width 0, not code 160's 900)", w)
+		}
+	}
+}

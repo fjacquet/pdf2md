@@ -86,10 +86,13 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 		if yDiff < 2.0 {
 			gap := next.X - (current.X + current.Width)
 
-			// Gaps narrower than a word space are kerning or styling: merge without separator
-			threshold := current.FontSize * types.WordGapEm
-			if threshold == 0 {
-				threshold = 2.0
+			sw := current.SpaceWidth
+			if sw == 0 {
+				// OCR blocks carry no font metrics: assume a 0.25 em space.
+				sw = current.FontSize * 0.25
+			}
+			if sw == 0 {
+				sw = 4.0 // no font size either: the former 2 pt threshold
 			}
 
 			wideGapThreshold := 30.0
@@ -98,7 +101,7 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 			}
 
 			switch {
-			case gap < threshold:
+			case !types.IsWordGap(gap, sw):
 				current = a.mergeElementsWithLinks(current, next, "")
 			case gap > wideGapThreshold:
 				// Check if current is a bullet character that should merge with next
