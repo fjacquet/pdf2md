@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Reading order follows the content stream, the order the producer wrote the page in. XY-cut is used only on pages where the stream jumps back up within a column on more than 10% of line transitions. READoc average 0.807 -> 0.834 (arXiv 0.724 -> 0.773); two-column text no longer comes out as a table.
+
 ### Added
 
 - `cmd/benchmark`: `-cmd` and `-output` flags score any converter, each document also gets an order-free word F1, and `benchmark_pdftotext.json` commits poppler `pdftotext` 26.10.0's per-document scores (average 0.8609) as the reference to beat.

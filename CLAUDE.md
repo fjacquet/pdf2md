@@ -130,7 +130,7 @@ Custom pure Go PDF parser that handles:
 ### 3. Layout Analysis (`internal/layout/`)
 
 - **Column detection** - Analyzes X positions to find column boundaries
-- **Reading order** - `sorter.go` sorts blocks by column then Y position (top-to-bottom)
+- **Reading order** - `stream_order.go` keeps content-stream order; `sorter.go` (XY-cut) only for pages where the stream jumps back up within a column on more than 10% of line transitions
 - **Header detection** - Uses font size ratios (default 1.2x body text)
 - **Element classification** - Rule-based system in `analyzer.go` for headers, code blocks, lists, tables, admonitions
 - **ONNX integration** - `analyzer_onnx.go` fuses ML detections with rule-based analysis
@@ -214,6 +214,7 @@ Shared cache primitives live in `internal/modelcache/` (used by both
 - **Font size is in points** - 1 point = 1/72 inch
 - **Column detection threshold** - Default 10.0 pixels (`ColumnGapThreshold`)
 - **Header detection ratio** - Default 1.2x body font size (`HeaderSizeRatio`)
+- **Word gap** - `types.WordGapEm` (0.125 em) decides spaces from TJ offsets and same-line gaps
 
 ### ONNX Technical Notes
 

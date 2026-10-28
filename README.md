@@ -129,6 +129,7 @@ pdf2md uses a modular pipeline architecture:
 
 - [x] AES-256 (V=5/R=6) encryption and non-empty user passwords (`--password`)
 - [ ] Golden-file regression corpus
+- [ ] READoc average at least `pdftotext`'s (0.861); 0.834 with content-stream reading order
 
 ### After 1.0
 
