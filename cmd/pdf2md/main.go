@@ -214,7 +214,7 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 		// Extract content
 		content, err := ext.ExtractTextBlocks(i + 1)
 		if err != nil {
-			fmt.Printf("Error extracting page %d: %v\n", i+1, err)
+			logger.Error("Failed to extract page", "page", i+1, "error", err)
 			continue
 		}
 

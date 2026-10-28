@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log"
 
 	"github.com/fjacquet/pdf2md/internal/types"
 )
@@ -41,7 +42,7 @@ func (in *Interpreter) processXObject(name Name) error {
 		// If Do is called but no XObject dict, it's an error in the PDF or our parsing.
 		// But we shouldn't crash or fail the page if possible.
 		// Just log warning and return.
-		fmt.Printf("Warning: Do operator called for %s but no XObject dictionary found\n", name)
+		log.Printf("Warning: Do operator called for %s but no XObject dictionary found\n", name)
 		return nil
 	}
 
@@ -123,7 +124,7 @@ func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
 	// Decode the Form's content stream
 	data, err := DecodeStreamFromDict(stream.Data, stream.Dictionary)
 	if err != nil {
-		fmt.Printf("Warning: Failed to decode Form XObject %s: %v\n", name, err)
+		log.Printf("Warning: Failed to decode Form XObject %s: %v\n", name, err)
 		return nil // Don't fail the page for a single XObject
 	}
 
@@ -148,7 +149,7 @@ func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
 	// Process the Form content
 	textBlocks, images, graphics, err := subInterpreter.Process(data)
 	if err != nil {
-		fmt.Printf("Warning: Error processing Form XObject %s: %v\n", name, err)
+		log.Printf("Warning: Error processing Form XObject %s: %v\n", name, err)
 		// Restore state and continue
 		if len(in.StateStack) > 0 {
 			in.State = in.StateStack[len(in.StateStack)-1]
@@ -230,7 +231,7 @@ func (in *Interpreter) extractImage(name Name, stream *Stream) error {
 	pngData, err := encodePNGWithPalette(data, imgWidth, imgHeight, csInfo, bpc)
 	if err != nil {
 		// If encoding fails, skip this image
-		fmt.Printf("Warning: Failed to encode image %s as PNG: %v\n", name, err)
+		log.Printf("Warning: Failed to encode image %s as PNG: %v\n", name, err)
 		return nil
 	}
 

@@ -3,6 +3,7 @@ package pdf
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/fjacquet/pdf2md/internal/types"
@@ -82,7 +83,7 @@ func (in *Interpreter) handleInlineImage(tokenizer *Tokenizer) error {
 		}
 		decoded, err := DecodeStream(data, Name(filter), decodeParms)
 		if err != nil {
-			fmt.Printf("Warning: Failed to decode inline image: %v\n", err)
+			log.Printf("Warning: Failed to decode inline image: %v\n", err)
 			// Continue with raw data
 		} else {
 			data = decoded
@@ -123,7 +124,7 @@ func (in *Interpreter) handleInlineImage(tokenizer *Tokenizer) error {
 	pngData, err := encodePNG(data, width, height, components, bpc)
 	if err != nil {
 		// If encoding fails, skip this image
-		fmt.Printf("Warning: Failed to encode inline image as PNG: %v\n", err)
+		log.Printf("Warning: Failed to encode inline image as PNG: %v\n", err)
 		return nil
 	}
 

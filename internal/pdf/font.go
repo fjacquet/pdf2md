@@ -3,7 +3,6 @@ package pdf
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
 	"log"
 	"maps"
 	"regexp"
@@ -103,7 +102,7 @@ func (fm *FontManager) LoadFonts(resources Dictionary) error {
 			font, err := fm.parseFont(fDict)
 			if err != nil {
 				// Log error but continue?
-				fmt.Printf("Error parsing font %s: %v\n", name, err)
+				log.Printf("Error parsing font %s: %v\n", name, err)
 				continue
 			}
 			fm.Fonts[name] = font

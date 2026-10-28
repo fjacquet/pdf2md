@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Library warnings (unparsable font, missing XObject, image encode failure, …) go to stderr. Without an output file the Markdown is printed on stdout, and these warnings used to land inside it.
+- A page whose only content is an unsaved image or a too-small graphic no longer panics.
 - **Security:** saved images and SVG graphics are named `<prefix>_p<page>_<n>.<ext>`. The PDF's XObject name no longer reaches the file system: a name such as `/..#2F..#2Fevil` could write outside the `images/` directory. Pages no longer overwrite each other's `Im1` / `Path1` files, and an unsaved or trivial graphic no longer turns into a broken Markdown image link.
 - Word spaces are decided against each font's own space width (half of it), for TJ offsets and same-line gaps alike, instead of a fixed 0.125 em. Fonts without a space glyph (pdfTeX, FirstChar above 32) fall back to 250/1000 em instead of taking `/MissingWidth`, and WinAnsi's second `space` (code 160) no longer wins at random. `TextBlock.SpaceWidth` carries the width in user space.
 - Glyph widths follow the spec order: `/W` and `/DW` for composite fonts; `/Widths`, `/MissingWidth`, then the standard 14 metrics (generated from Adobe's Core14 AFM files) for simple fonts; Type 3 widths scaled by `FontMatrix`. Composite fonts split codes by their encoding CMap's codespace. Standard fonts without `/Widths` (e.g. Times-Roman in TeX output) no longer overlap the next word.

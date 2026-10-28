@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -81,5 +83,30 @@ func TestPasswordFlagAndEnv(t *testing.T) {
 	}
 	if CLI.Password != "from-flag" {
 		t.Errorf("Password = %q, want the flag to win over the environment", CLI.Password)
+	}
+}
+
+// Without an output file the Markdown goes to stdout, so conversion itself
+// must not print there: a warning would land inside the Markdown.
+func TestStdoutIsOnlyMarkdown(t *testing.T) {
+	pdf := writePDFStream(t, "/Fm1 Do BT /F1 12 Tf 72 700 Td (hello) Tj ET")
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = w
+	md, convErr := convertPDFToMarkdown(pdf, "", convertOptions{})
+	os.Stdout = stdout
+	_ = w.Close()
+	printed, _ := io.ReadAll(r)
+	if convErr != nil {
+		t.Fatalf("convertPDFToMarkdown() error = %v", convErr)
+	}
+	if !strings.Contains(md, "hello") {
+		t.Errorf("Markdown = %q, want the page text", md)
+	}
+	if len(printed) != 0 {
+		t.Errorf("conversion wrote to stdout: %q", printed)
 	}
 }

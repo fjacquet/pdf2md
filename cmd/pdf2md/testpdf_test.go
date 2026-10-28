@@ -33,7 +33,13 @@ func writePDF(t *testing.T, runs []run) string {
 		fontKey := slices.Index(pdfFonts, r.font) + 1
 		fmt.Fprintf(&content, "BT /F%d %g Tf %g %g Td (%s) Tj ET\n", fontKey, r.size, r.x, r.y, escapePDF(r.text))
 	}
-	stream := content.String()
+	return writePDFStream(t, content.String())
+}
+
+// writePDFStream writes a one-page PDF whose content stream is stream, with
+// pdfFonts as /F1, /F2, ….
+func writePDFStream(t *testing.T, stream string) string {
+	t.Helper()
 
 	objs := []string{
 		"<< /Type /Catalog /Pages 2 0 R >>",
