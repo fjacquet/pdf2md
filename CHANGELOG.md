@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-28
+
 ### Fixed
 
 - ToUnicode CMaps are read completely (ISO 32000 §9.10.3): multi-character `bfrange` destinations increment their last UTF-16 unit, array destinations, codes of up to 4 bytes, and the codespace, which now splits composite codes when the font embeds no encoding CMap. An unreadable ToUnicode stream no longer drops the whole font.
