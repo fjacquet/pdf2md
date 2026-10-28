@@ -11,13 +11,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
 
-// baseline records per-document scores and the READoc commit they were measured on.
+// baseline records per-document scores, the READoc commit they were measured
+// on, and the tool version that produced them.
 type baseline struct {
 	Dataset string             `json:"dataset"`
+	Tool    string             `json:"tool,omitempty"`
 	Scores  map[string]float64 `json:"scores"`
 }
 
@@ -25,14 +28,14 @@ func main() {
 	baselinePath := flag.String("baseline", "benchmark_baseline.json", "baseline scores file")
 	updateBaseline := flag.Bool("update-baseline", false, "write the current scores as the new baseline")
 	tolerance := flag.Float64("tolerance", 0.02, "allowed score drop per document before failing")
+	cmdTmpl := flag.String("cmd", "./pdf2md --no-onnx --no-ocr {in} {out}", "converter command; {in} is the PDF, {out} the Markdown file (stdout is used when {out} is absent)")
+	outputDir := flag.String("output", "READoc/output/pdf2md", "directory for the converted Markdown")
 	flag.Parse()
 
-	// Define paths
 	dataDir := "READoc/data"
-	outputDir := "READoc/output/pdf2md"
 
 	// Ensure output directory exists
-	if err := os.MkdirAll(outputDir, 0o750); err != nil {
+	if err := os.MkdirAll(*outputDir, 0o750); err != nil {
 		log.Fatalf("Failed to create output directory: %v", err)
 	}
 
@@ -71,7 +74,7 @@ func main() {
 		}
 
 		// Construct output path
-		outPath := filepath.Join(outputDir, relPath)
+		outPath := filepath.Join(*outputDir, relPath)
 		outPath = strings.TrimSuffix(outPath, ".pdf") + ".md"
 
 		// Ensure output subdirectory exists
@@ -80,13 +83,20 @@ func main() {
 			continue
 		}
 
-		// Run pdf2md
-		cmd := exec.Command("./pdf2md", "--no-onnx", "--no-ocr", pdfPath, outPath) //nolint:gosec // Benchmark tool, paths are from local filesystem walk
-		var stderr bytes.Buffer
+		args := expandCmd(*cmdTmpl, pdfPath, outPath)
+		cmd := exec.Command(args[0], args[1:]...) //nolint:gosec // Benchmark tool, command comes from a CLI flag, paths from a local filesystem walk
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
 			log.Printf("Failed to convert %s: %v\nStderr: %s", pdfPath, err, stderr.String())
 			continue
+		}
+		if !strings.Contains(*cmdTmpl, "{out}") {
+			if err := os.WriteFile(outPath, stdout.Bytes(), 0o600); err != nil {
+				log.Printf("Failed to write %s: %v", outPath, err)
+				continue
+			}
 		}
 
 		// Determine ground truth path
@@ -104,7 +114,7 @@ func main() {
 		gtPath = strings.TrimSuffix(gtPath, ".pdf") + ".md"
 
 		// Read files
-		genBytes, err := os.ReadFile(outPath)
+		genBytes, err := os.ReadFile(outPath) //nolint:gosec // G304: path built from the -output flag of a local tool
 		if err != nil {
 			log.Printf("Failed to read generated file %s: %v", outPath, err)
 			continue
@@ -117,7 +127,7 @@ func main() {
 
 		// Normalize and compare
 		score := calculateSimilarity(string(genBytes), string(gtBytes))
-		fmt.Printf("[%s] Similarity: %.4f\n", parts[len(parts)-1], score)
+		fmt.Printf("[%s] Similarity: %.4f  Word F1: %.4f\n", parts[len(parts)-1], score, wordF1(string(genBytes), string(gtBytes)))
 
 		totalScore += score
 		count++
@@ -150,7 +160,7 @@ func main() {
 		if len(scores) == 0 {
 			log.Fatal("Refusing to write an empty baseline")
 		}
-		if err := writeBaseline(*baselinePath, scores); err != nil {
+		if err := writeBaseline(*baselinePath, toolVersion(*cmdTmpl), scores); err != nil {
 			log.Fatalf("Failed to write baseline: %v", err)
 		}
 		fmt.Printf("Baseline written to %s\n", *baselinePath)
@@ -162,10 +172,10 @@ func main() {
 	}
 }
 
-func writeBaseline(path string, scores map[string]float64) error {
+func writeBaseline(path, tool string, scores map[string]float64) error {
 	// The dataset is a separate git clone; record which commit the scores belong to.
 	rev, _ := exec.Command("git", "-C", "READoc", "rev-parse", "HEAD").Output() //nolint:gosec // fixed arguments
-	data, err := json.MarshalIndent(baseline{Dataset: strings.TrimSpace(string(rev)), Scores: scores}, "", "  ")
+	data, err := json.MarshalIndent(baseline{Dataset: strings.TrimSpace(string(rev)), Tool: tool, Scores: scores}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -256,4 +266,55 @@ func levenshtein(s1, s2 []rune) int {
 		row[len2] = prev
 	}
 	return row[len2]
+}
+
+// expandCmd splits the command template on whitespace and substitutes {in}
+// and {out} per field, so paths containing spaces stay one argument.
+func expandCmd(tmpl, in, out string) []string {
+	fields := strings.Fields(tmpl)
+	for i, f := range fields {
+		fields[i] = strings.NewReplacer("{in}", in, "{out}", out).Replace(f)
+	}
+	return fields
+}
+
+// toolVersion names what produced the scores: the git revision for our own
+// binary, else the first line of the converter's -v output (pdftotext prints
+// "pdftotext version X" on stderr).
+func toolVersion(tmpl string) string {
+	name := strings.Fields(tmpl)[0]
+	cmd := exec.Command(name, "-v") //nolint:gosec // G204: command comes from a CLI flag of a local tool
+	if name == "./pdf2md" {
+		cmd = exec.Command("git", "describe", "--always", "--dirty")
+	}
+	out, _ := cmd.CombinedOutput()
+	line, _, _ := strings.Cut(string(out), "\n")
+	return strings.TrimSpace(line)
+}
+
+var wordRe = regexp.MustCompile(`\w+`)
+
+// wordF1 is the F1 of the lowercased \w+ token multisets: it scores the words
+// regardless of their order, which separates text extraction from reading order.
+func wordF1(gen, gt string) float64 {
+	count := func(s string) map[string]int {
+		m := map[string]int{}
+		for _, w := range wordRe.FindAllString(strings.ToLower(s), -1) {
+			m[w]++
+		}
+		return m
+	}
+	g, t := count(gen), count(gt)
+	inter, ng, nt := 0, 0, 0
+	for w, n := range g {
+		inter += min(n, t[w])
+		ng += n
+	}
+	for _, n := range t {
+		nt += n
+	}
+	if inter == 0 {
+		return 0
+	}
+	return 2 * float64(inter) / float64(ng+nt)
 }

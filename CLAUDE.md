@@ -36,8 +36,10 @@ make fmt
 # Run linter
 make lint
 
-# Run benchmark
+# Run benchmark (Levenshtein + word F1 per READoc doc, checks benchmark_baseline.json)
 make benchmark
+# Score pdftotext against its committed reference
+go run ./cmd/benchmark -cmd 'pdftotext {in} {out}' -output READoc/output/pdftotext -baseline benchmark_pdftotext.json
 
 # Test with a sample PDF
 make run-test

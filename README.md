@@ -168,6 +168,16 @@ With a [READoc](https://github.com/icip-cas/READoc) clone in `./READoc` and the 
 and fails if any document drops more than 0.02 below `benchmark_baseline.json`. After an intended
 improvement, run `go run cmd/benchmark/main.go -update-baseline`.
 
+Each document gets a Levenshtein similarity and a word F1 (order-free, so it separates text
+extraction from reading order). `-cmd` scores another converter, with `{in}` and `{out}`
+placeholders (stdout is used without `{out}`), and `-output` picks its output directory.
+`benchmark_pdftotext.json` holds poppler's per-document scores as the reference to beat:
+
+```bash
+go run ./cmd/benchmark -cmd 'pdftotext {in} {out}' -output READoc/output/pdftotext \
+  -baseline benchmark_pdftotext.json
+```
+
 ## License
 
 MIT License - See LICENSE file for details
