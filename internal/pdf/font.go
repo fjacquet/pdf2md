@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -22,6 +23,10 @@ type Font struct {
 	LastChar     int
 	CIDWidths    map[int]float64
 	DefaultWidth float64
+	MissingWidth float64       // FontDescriptor /MissingWidth, 0 when absent
+	Type3Scale   float64       // FontMatrix[0]×1000 for Type 3 fonts, 0 otherwise
+	codespaces   []codespace   // from the embedded encoding CMap of a composite font
+	std14        *std14Metrics // standard 14 metrics matching BaseFont, if any
 }
 
 // FontManager manages fonts for a page
@@ -36,6 +41,16 @@ func NewFontManager(r *Reader) *FontManager {
 		Fonts:  make(map[Name]*Font),
 		reader: r,
 	}
+}
+
+// resolve follows an indirect reference; other objects are returned as is.
+func (fm *FontManager) resolve(obj Object) Object {
+	if ref, ok := obj.(IndirectRef); ok && fm.reader != nil {
+		if o, err := fm.reader.ReadObject(ref.ObjectNumber); err == nil {
+			return o
+		}
+	}
+	return obj
 }
 
 // Child returns a font manager holding fm's fonts overlaid with the fonts of
@@ -97,6 +112,179 @@ func (fm *FontManager) LoadFonts(resources Dictionary) error {
 	return nil
 }
 
+//go:generate go run gen_std14/main.go
+
+// Code is one character code read from a string, with its length in bytes.
+type Code struct{ Value, Len int }
+
+// codespace is one begincodespacerange entry: codes of len(lo) bytes whose
+// bytes lie between lo and hi, byte by byte.
+type codespace struct{ lo, hi []byte }
+
+type std14Metrics struct {
+	byName map[string]int // glyph name -> width
+	byCode map[int]int    // code in the font's built-in encoding -> width
+}
+
+var (
+	codespaceRange = regexp.MustCompile(`(?s)begincodespacerange(.*?)endcodespacerange`)
+	hexPair        = regexp.MustCompile(`<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>`)
+)
+
+// parseCodespace reads the begincodespacerange sections of a CMap.
+func parseCodespace(cmap []byte) []codespace {
+	var out []codespace
+	for _, sec := range codespaceRange.FindAllSubmatch(cmap, -1) {
+		for _, m := range hexPair.FindAllSubmatch(sec[1], -1) {
+			lo, err1 := hex.DecodeString(string(m[1]))
+			hi, err2 := hex.DecodeString(string(m[2]))
+			if err1 == nil && err2 == nil && len(lo) == len(hi) && len(lo) > 0 {
+				out = append(out, codespace{lo, hi})
+			}
+		}
+	}
+	return out
+}
+
+// std14Aliases maps common names of the standard fonts to their AFM names.
+var std14Aliases = map[string]string{"Arial": "Helvetica", "TimesNewRoman": "Times-Roman", "CourierNew": "Courier"}
+
+// lookupStd14 returns the standard 14 metrics for baseFont, without its
+// subset prefix (ABCDEF+), or nil.
+func lookupStd14(baseFont string) *std14Metrics {
+	if i := strings.IndexByte(baseFont, '+'); i == 6 {
+		baseFont = baseFont[7:]
+	}
+	if alias, ok := std14Aliases[baseFont]; ok {
+		baseFont = alias
+	}
+	if m, ok := std14Fonts[baseFont]; ok {
+		return &m
+	}
+	return nil
+}
+
+// Codes splits raw into character codes: one byte for simple fonts, the
+// encoding CMap's codespace for composite fonts, else two bytes
+// (Identity-H/V).
+// shortcut: predefined CMaps other than Identity are read as 2-byte codes, upgrade when a corpus document uses one.
+func (f *Font) Codes(raw []byte) []Code {
+	var out []Code
+	for i := 0; i < len(raw); {
+		n := 1
+		switch {
+		case f == nil || f.Subtype != "Type0":
+		case len(f.codespaces) > 0:
+			n = f.codeLen(raw[i:])
+		case i+1 < len(raw):
+			n = 2
+		}
+		v := 0
+		for _, b := range raw[i : i+n] {
+			v = v<<8 | int(b)
+		}
+		out = append(out, Code{v, n})
+		i += n
+	}
+	return out
+}
+
+// codeLen is the length of the codespace range matching the start of b, 1
+// when none matches.
+func (f *Font) codeLen(b []byte) int {
+	for _, cs := range f.codespaces {
+		if len(cs.lo) > len(b) {
+			continue
+		}
+		match := true
+		for k := range cs.lo {
+			if b[k] < cs.lo[k] || b[k] > cs.hi[k] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return len(cs.lo)
+		}
+	}
+	return 1
+}
+
+// Width is the advance of c in thousandths of em of text space (ISO 32000
+// §9.6–9.7): composite fonts use /W then /DW; simple fonts use /Widths,
+// then /MissingWidth, then the standard 14 metrics, then 500. A nil font
+// (unknown Tf name) has width 500.
+// shortcut: vertical metrics (Identity-V, /W2) ignored, upgrade when a vertical CJK document is in the corpus.
+func (f *Font) Width(c Code) float64 {
+	if f == nil {
+		return 500
+	}
+	if f.Subtype == "Type0" || f.CIDWidths != nil {
+		if w, ok := f.CIDWidths[c.Value]; ok {
+			return w
+		}
+		if f.DefaultWidth > 0 {
+			return f.DefaultWidth
+		}
+		return 1000
+	}
+	if i := c.Value - f.FirstChar; i >= 0 && i < len(f.Widths) {
+		if f.Type3Scale != 0 {
+			return f.Widths[i] * f.Type3Scale
+		}
+		return f.Widths[i]
+	}
+	if f.MissingWidth > 0 {
+		return f.MissingWidth
+	}
+	if f.std14 != nil {
+		if w, ok := f.std14.byName[f.Encoding[c.Value]]; ok {
+			return float64(w)
+		}
+		if w, ok := f.std14.byCode[c.Value]; ok {
+			return float64(w)
+		}
+	}
+	return 500
+}
+
+// SpaceWidth is the width of the font's space, in thousandths of em: the
+// code mapped to " " by ToUnicode or named "space" by the encoding, else the
+// standard 14 space, else 250. A width that is not in (0, 1000] also gives
+// 250, so a zero-width space glyph cannot make every gap a word gap.
+func (f *Font) SpaceWidth() float64 {
+	w := 0.0
+	switch {
+	case f == nil:
+	case f.spaceCode() != nil:
+		w = f.Width(*f.spaceCode())
+	case f.std14 != nil:
+		w = float64(f.std14.byName["space"])
+	}
+	if w <= 0 || w > 1000 {
+		return 250
+	}
+	return w
+}
+
+func (f *Font) spaceCode() *Code {
+	n := 1
+	if f.Subtype == "Type0" {
+		n = 2
+	}
+	for code, s := range f.ToUnicode {
+		if s == " " {
+			return &Code{code, n}
+		}
+	}
+	for code, name := range f.Encoding {
+		if name == "space" {
+			return &Code{code, n}
+		}
+	}
+	return nil
+}
+
 func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 	font := &Font{
 		ToUnicode: make(map[int]string),
@@ -108,6 +296,18 @@ func (fm *FontManager) parseFont(dict Dictionary) (*Font, error) {
 	}
 	if subtype, ok := dict[Name("Subtype")].(Name); ok {
 		font.Subtype = string(subtype)
+	}
+	font.std14 = lookupStd14(font.BaseFont)
+	if fd, ok := fm.resolve(dict[Name("FontDescriptor")]).(Dictionary); ok {
+		font.MissingWidth = toFloat(fd[Name("MissingWidth")])
+	}
+	if m, ok := dict[Name("FontMatrix")].(Array); ok && len(m) == 6 && font.Subtype == "Type3" {
+		font.Type3Scale = toFloat(m[0]) * 1000
+	}
+	if enc, ok := fm.resolve(dict[Name("Encoding")]).(Stream); ok && font.Subtype == "Type0" {
+		if data, err := decodeStream(enc); err == nil {
+			font.codespaces = parseCodespace(data)
+		}
 	}
 
 	// Parse Widths
@@ -467,103 +667,43 @@ func (f *Font) GetWidth(code int) float64 {
 
 // DecodeString decodes a PDF string using the font's encoding/CMap
 func (f *Font) DecodeString(s string) string {
-	if len(f.ToUnicode) > 0 {
-		// Use CMap
-		// Problem: Is the string 1-byte or 2-byte codes?
-		// Usually composite fonts use 2 bytes (CID), simple fonts 1 byte.
-		// We need to know if it's a composite font.
-		// Subtype Type0 is composite.
-
-		isComposite := f.Subtype == "Type0"
-
-		var res strings.Builder
-		data := []byte(s)
-		i := 0
-		for i < len(data) {
-			var code int
-			if isComposite && i+1 < len(data) {
-				// Try 2 bytes first
-				code = int(data[i])<<8 | int(data[i+1])
-				if val, ok := f.ToUnicode[code]; ok {
-					res.WriteString(val)
-					i += 2
-					continue
-				}
-				// Try 1 byte if 2-byte not found (some fonts mix encodings)
-				code = int(data[i])
-				if val, ok := f.ToUnicode[code]; ok {
-					res.WriteString(val)
-					i++
-					continue
-				}
-				// Fallback: treat as ASCII if printable
-				if data[i] >= 32 && data[i] < 127 {
-					res.WriteByte(data[i])
-					i++
-				} else {
-					i += 2 // Skip 2-byte code we can't decode
-				}
-				continue
-			}
-			// 1 byte
-			code = int(data[i])
-			if val, ok := f.ToUnicode[code]; ok {
-				res.WriteString(val)
-			} else if name, ok := f.Encoding[code]; ok {
-				if uni, ok := GlyphToUnicode[name]; ok {
-					res.WriteString(uni)
-				} else {
-					// Unknown glyph name
-					res.WriteByte(data[i])
-				}
-			} else {
-				// Fallback: assume ASCII/Latin1
-				res.WriteByte(data[i])
-			}
-			i++
+	var res strings.Builder
+	data := []byte(s)
+	if len(f.ToUnicode) == 0 {
+		// No CMap, use Encoding byte by byte
+		for _, b := range data {
+			f.writeSimple(&res, b)
 		}
 		return res.String()
 	}
-
-	// No CMap, use Encoding
-	var res strings.Builder
-	data := []byte(s)
-	for i := 0; i < len(data); i++ {
-		code := int(data[i])
-		if name, ok := f.Encoding[code]; ok {
-			if uni, ok := GlyphToUnicode[name]; ok {
-				res.WriteString(uni)
-			} else {
-				// Unknown glyph name
-				res.WriteByte(data[i])
+	for _, c := range f.Codes(data) {
+		switch {
+		case f.ToUnicode[c.Value] != "":
+			res.WriteString(f.ToUnicode[c.Value])
+		case c.Len == 1:
+			f.writeSimple(&res, byte(c.Value)) //nolint:gosec // G115: a 1-byte code is < 256
+		default:
+			// Unmapped multi-byte code: keep the bytes that are printable ASCII.
+			for k := c.Len - 1; k >= 0; k-- {
+				if b := byte(c.Value >> (8 * k)); b >= 32 && b < 127 { //nolint:gosec // G115: keeps one byte of the code on purpose
+					res.WriteByte(b)
+				}
 			}
-		} else {
-			// Fallback: assume ASCII/Latin1
-			res.WriteByte(data[i])
 		}
 	}
 	return res.String()
 }
 
-// CalculateWidth calculates the width of the string in text space (1000 units)
-func (f *Font) CalculateWidth(s string) float64 {
-	var width float64
-	data := []byte(s)
-	i := 0
-	isComposite := f.Subtype == "Type0"
-
-	for i < len(data) {
-		var code int
-		if isComposite && i+1 < len(data) {
-			code = int(data[i])<<8 | int(data[i+1])
-			i += 2
-		} else {
-			code = int(data[i])
-			i++
+// writeSimple writes a 1-byte code through the encoding's glyph name, else
+// as Latin-1.
+func (f *Font) writeSimple(res *strings.Builder, b byte) {
+	if name, ok := f.Encoding[int(b)]; ok {
+		if uni, ok := GlyphToUnicode[name]; ok {
+			res.WriteString(uni)
+			return
 		}
-		width += f.GetWidth(code)
 	}
-	return width
+	res.WriteByte(b)
 }
 
 func (f *Font) parseToUnicodeCMap(data []byte) {
@@ -714,12 +854,4 @@ func (fm *FontManager) DecodeString(fontName Name, s string) string {
 		return font.DecodeString(s)
 	}
 	return s
-}
-
-// CalculateWidth calculates the width of the string using the specified font
-func (fm *FontManager) CalculateWidth(fontName Name, s string) float64 {
-	if font, ok := fm.Fonts[fontName]; ok {
-		return font.CalculateWidth(s)
-	}
-	return 0
 }

@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -75,35 +76,6 @@ func TestFont_DecodeString(t *testing.T) {
 	}
 }
 
-func TestFont_CalculateWidth(t *testing.T) {
-	// Simple font
-	f1 := &Font{
-		FirstChar: 65, // A
-		LastChar:  66, // B
-		Widths:    []float64{500, 600},
-	}
-	// "AB"
-	s1 := string([]byte{65, 66})
-	if w := f1.CalculateWidth(s1); w != 1100 {
-		t.Errorf("Expected width 1100, got %f", w)
-	}
-
-	// Composite font
-	f2 := &Font{
-		Subtype:      "Type0",
-		DefaultWidth: 1000,
-		CIDWidths: map[int]float64{
-			0x0041: 500,
-		},
-	}
-	// 00 41 00 42 (A, B)
-	// A has width 500, B has default width 1000
-	s2 := string([]byte{0, 65, 0, 66})
-	if w := f2.CalculateWidth(s2); w != 1500 {
-		t.Errorf("Expected width 1500, got %f", w)
-	}
-}
-
 func TestFontManager_Methods(t *testing.T) {
 	fm := NewFontManager(nil)
 	f := &Font{
@@ -113,13 +85,6 @@ func TestFontManager_Methods(t *testing.T) {
 		Encoding:  map[int]string{65: "A"},
 	}
 	fm.Fonts[Name("F1")] = f
-
-	if w := fm.CalculateWidth(Name("F1"), "A"); w != 500 {
-		t.Errorf("Expected width 500, got %f", w)
-	}
-	if w := fm.CalculateWidth(Name("F2"), "A"); w != 0 {
-		t.Errorf("Expected width 0 for unknown font, got %f", w)
-	}
 
 	if s := fm.DecodeString(Name("F1"), "A"); s != "A" {
 		t.Errorf("Expected 'A', got '%s'", s)
@@ -186,5 +151,87 @@ func TestType3Font_GetWidth(t *testing.T) {
 	}
 	if w := f.GetWidth(68); w != 0 {
 		t.Errorf("Type3: Expected width 0 for out-of-range char 68, got %f", w)
+	}
+}
+
+func mustParseFont(t *testing.T, dict Dictionary) *Font {
+	t.Helper()
+	f, err := NewFontManager(nil).parseFont(dict)
+	if err != nil {
+		t.Fatalf("parseFont: %v", err)
+	}
+	return f
+}
+
+func TestWidth_MissingWidth(t *testing.T) {
+	f := mustParseFont(t, Dictionary{
+		Name("Subtype"): Name("TrueType"), Name("BaseFont"): Name("Custom"),
+		Name("FirstChar"): Integer(32), Name("LastChar"): Integer(33),
+		Name("Widths"):         Array{Integer(250), Integer(300)},
+		Name("FontDescriptor"): Dictionary{Name("MissingWidth"): Integer(400)},
+	})
+	if w := f.Width(Code{65, 1}); w != 400 {
+		t.Errorf("Width(65) = %v, want 400 (MissingWidth)", w)
+	}
+}
+
+func TestWidth_Type3FontMatrix(t *testing.T) {
+	f := mustParseFont(t, Dictionary{
+		Name("Subtype"): Name("Type3"), Name("FontMatrix"): Array{Real(0.01), Integer(0), Integer(0), Real(0.01), Integer(0), Integer(0)},
+		Name("FirstChar"): Integer(65), Name("LastChar"): Integer(65), Name("Widths"): Array{Integer(50)},
+		Name("Encoding"): Dictionary{Name("Differences"): Array{Integer(65), Name("A")}},
+	})
+	if w := f.Width(Code{65, 1}); w != 500 {
+		t.Errorf("Width(65) = %v, want 500 (50 × FontMatrix[0] × 1000)", w)
+	}
+}
+
+func TestWidth_Std14(t *testing.T) {
+	for _, base := range []string{"Helvetica", "ABCDEF+Helvetica"} {
+		f := mustParseFont(t, Dictionary{Name("Subtype"): Name("Type1"), Name("BaseFont"): Name(base), Name("Encoding"): Name("WinAnsiEncoding")})
+		if w := f.Width(Code{'A', 1}); w != 667 {
+			t.Errorf("%s: Width('A') = %v, want 667", base, w)
+		}
+		if w := f.SpaceWidth(); w != 278 {
+			t.Errorf("%s: SpaceWidth() = %v, want 278", base, w)
+		}
+	}
+}
+
+func TestSpaceWidth_ZeroWidthSpaceGlyph(t *testing.T) {
+	f := &Font{Subtype: "Type0", ToUnicode: map[int]string{3: " "}, CIDWidths: map[int]float64{3: 0}, DefaultWidth: 1000}
+	if w := f.SpaceWidth(); w != 250 {
+		t.Errorf("SpaceWidth() = %v, want 250 fallback for a zero-width space glyph", w)
+	}
+}
+
+func TestWidth_UnknownFont(t *testing.T) {
+	b := runText(t, "BT /F9 10 Tf (AB) Tj ET")
+	near(t, "Width", b[0].Width, 10)
+	var unknown *Font
+	if w := unknown.SpaceWidth(); w != 250 {
+		t.Errorf("nil font SpaceWidth() = %v, want 250", w)
+	}
+}
+
+func TestCodes_Codespace(t *testing.T) {
+	cmap := []byte("2 begincodespacerange\n<00> <80>\n<8140> <FFFF>\nendcodespacerange")
+	f := mustParseFont(t, Dictionary{
+		Name("Subtype"): Name("Type0"), Name("BaseFont"): Name("Mixed"),
+		Name("Encoding"): Stream{Dictionary: Dictionary{}, Data: cmap},
+	})
+	got := f.Codes([]byte{0x41, 0x81, 0x40, 0x42})
+	want := []Code{{0x41, 1}, {0x8140, 2}, {0x42, 1}}
+	if !slices.Equal(got, want) {
+		t.Errorf("Codes() = %v, want %v", got, want)
+	}
+}
+
+func TestCodes_IdentityH(t *testing.T) {
+	f := mustParseFont(t, Dictionary{Name("Subtype"): Name("Type0"), Name("Encoding"): Name("Identity-H")})
+	got := f.Codes([]byte{0x00, 0x41, 0x00, 0x42})
+	want := []Code{{0x41, 2}, {0x42, 2}}
+	if !slices.Equal(got, want) {
+		t.Errorf("Codes() = %v, want %v", got, want)
 	}
 }

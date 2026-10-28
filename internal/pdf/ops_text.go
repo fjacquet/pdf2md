@@ -242,24 +242,10 @@ func (in *Interpreter) showText(obj Object) error {
 // text and the signed horizontal advance of the text origin in user space.
 func (in *Interpreter) showString(raw []byte) (string, float64) {
 	x0, _ := in.textOrigin()
-	composite := false
-	if in.FontManager != nil {
-		if f, ok := in.FontManager.Fonts[in.State.Tf]; ok {
-			composite = f.Subtype == "Type0"
-		}
-	}
-	// shortcut: composite fonts are read as 2-byte codes; Task 3 splits codes by the CMap codespace.
-	step := 1
-	if composite {
-		step = 2
-	}
-	for i := 0; i+step <= len(raw); i += step {
-		code := int(raw[i])
-		if step == 2 {
-			code = code<<8 | int(raw[i+1])
-		}
-		tx := in.glyphWidth(code)/1000*in.State.Tfs + in.State.Tc
-		if step == 1 && code == 32 {
+	font := in.font()
+	for _, c := range font.Codes(raw) {
+		tx := font.Width(c)/1000*in.State.Tfs + in.State.Tc
+		if c.Len == 1 && c.Value == 32 {
 			tx += in.State.Tw
 		}
 		in.Tm = Matrix{1, 0, 0, 1, tx * in.State.Th / 100, 0}.Multiply(in.Tm)
@@ -268,18 +254,12 @@ func (in *Interpreter) showString(raw []byte) (string, float64) {
 	return in.decodeText(string(raw)), x1 - x0
 }
 
-// glyphWidth is the width of code in thousandths of em, 500 when the font or
-// its width is unknown so that glyphs still advance.
-// shortcut: temporary, Task 3 replaces it with the spec-ordered Font.Width.
-func (in *Interpreter) glyphWidth(code int) float64 {
-	if in.FontManager != nil {
-		if f, ok := in.FontManager.Fonts[in.State.Tf]; ok {
-			if w := f.GetWidth(code); w != 0 {
-				return w
-			}
-		}
+// font is the current font, nil when Tf names a font absent from resources.
+func (in *Interpreter) font() *Font {
+	if in.FontManager == nil {
+		return nil
 	}
-	return 500
+	return in.FontManager.Fonts[in.State.Tf]
 }
 
 // textOrigin is the text origin, raised by Ts, in user space.
