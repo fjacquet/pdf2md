@@ -326,9 +326,11 @@ func wordF1(gen, gt string) float64 {
 	return multisetF1(count(gen), count(gt))
 }
 
-var atxHeading = regexp.MustCompile(`(?m)^(#{1,6})\s+(.*)$`)
-var linkMarkup = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
-var nonWord = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+var (
+	atxHeading = regexp.MustCompile(`(?m)^(#{1,6})\s+(.*)$`)
+	linkMarkup = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	nonWord    = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+)
 
 // headings lists "<level> <text>" per ATX heading, text with link markup
 // reduced to its label, lower-cased and punctuation collapsed.
