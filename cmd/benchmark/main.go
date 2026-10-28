@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -60,8 +62,8 @@ func main() {
 	var count int
 
 	type Result struct {
-		File  string
-		Score float64
+		File                     string
+		Score, Words, Heads, Hds float64 // Hds: heading F1 ignoring the level
 	}
 	var results []Result
 
@@ -127,11 +129,13 @@ func main() {
 
 		// Normalize and compare
 		score := calculateSimilarity(string(genBytes), string(gtBytes))
-		fmt.Printf("[%s] Similarity: %.4f  Word F1: %.4f\n", parts[len(parts)-1], score, wordF1(string(genBytes), string(gtBytes)))
+		gen, gt := string(genBytes), string(gtBytes)
+		r := Result{File: relPath, Score: score, Words: wordF1(gen, gt), Heads: headingF1(gen, gt, true), Hds: headingF1(gen, gt, false)}
+		fmt.Printf("[%s] Similarity: %.4f  Word F1: %.4f  Headings: %.4f (%.4f)\n", parts[len(parts)-1], score, r.Words, r.Heads, r.Hds)
 
 		totalScore += score
 		count++
-		results = append(results, Result{File: relPath, Score: score})
+		results = append(results, r)
 	}
 
 	if count > 0 {
@@ -148,6 +152,21 @@ func main() {
 			}
 		}
 		fmt.Printf("Worst performing file: %s (Score: %.4f)\n", worstFile, minScore)
+
+		// Per subset (first path element): heading F1 with level (text only), word F1.
+		subsets := map[string][]Result{}
+		for _, r := range results {
+			sub, _, _ := strings.Cut(filepath.ToSlash(r.File), "/")
+			subsets[sub] = append(subsets[sub], r)
+		}
+		for _, sub := range slices.Sorted(maps.Keys(subsets)) {
+			var h, ht, w float64
+			for _, r := range subsets[sub] {
+				h, ht, w = h+r.Heads, ht+r.Hds, w+r.Words
+			}
+			n := float64(len(subsets[sub]))
+			fmt.Printf("%s: headings %.4f (%.4f), words %.4f\n", sub, h/n, ht/n, w/n)
+		}
 	} else {
 		fmt.Println("No files processed.")
 	}
@@ -304,7 +323,50 @@ func wordF1(gen, gt string) float64 {
 		}
 		return m
 	}
+	return multisetF1(count(gen), count(gt))
+}
+
+var (
+	atxHeading = regexp.MustCompile(`(?m)^(#{1,6})\s+(.*)$`)
+	linkMarkup = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	nonWord    = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+)
+
+// headings lists "<level> <text>" per ATX heading, text with link markup
+// reduced to its label, lower-cased and punctuation collapsed.
+func headings(md string) []string {
+	var out []string
+	for _, m := range atxHeading.FindAllStringSubmatch(md, -1) {
+		text := strings.TrimSpace(nonWord.ReplaceAllString(strings.ToLower(linkMarkup.ReplaceAllString(m[2], "$1")), " "))
+		if text != "" {
+			out = append(out, fmt.Sprintf("%d %s", len(m[1]), text))
+		}
+	}
+	return out
+}
+
+// headingF1 is the F1 of the heading multisets of gen and gt; withLevel false
+// compares the texts only. No heading on either side scores 1.
+func headingF1(gen, gt string, withLevel bool) float64 {
+	count := func(md string) map[string]int {
+		m := map[string]int{}
+		for _, h := range headings(md) {
+			if !withLevel {
+				_, h, _ = strings.Cut(h, " ")
+			}
+			m[h]++
+		}
+		return m
+	}
 	g, t := count(gen), count(gt)
+	if len(g) == 0 && len(t) == 0 {
+		return 1
+	}
+	return multisetF1(g, t)
+}
+
+// multisetF1 is 2·|g ∩ t| / (|g| + |t|) over multiset counts.
+func multisetF1(g, t map[string]int) float64 {
 	inter, ng, nt := 0, 0, 0
 	for w, n := range g {
 		inter += min(n, t[w])
