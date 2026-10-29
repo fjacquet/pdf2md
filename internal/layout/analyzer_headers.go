@@ -16,7 +16,8 @@ func (a *Analyzer) RankHeaderLevels(elements []Element) []Element {
 		size float64
 		bold bool
 	}
-	key := func(e Element) style { return style{math.Round(e.FontSize*2) / 2, e.Bold} }
+	// ONNX and table-row headers skip classifyElement, so Bold is only in the markers.
+	key := func(e Element) style { return style{math.Round(e.FontSize*2) / 2, e.Bold || fullyBold(e.Content)} }
 	var styles []style
 	for _, e := range elements {
 		if e.Type == ElementTypeHeader && !slices.Contains(styles, key(e)) {

@@ -74,6 +74,9 @@ func main() {
 		}
 	}
 
+	// Heading levels come from the whole document's heading styles
+	allElements = analyzer.RankHeaderLevels(allElements)
+
 	// Step 6: Build markdown
 	md := builder.Build(allElements)
 
