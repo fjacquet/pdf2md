@@ -34,6 +34,16 @@ func (in *Interpreter) handleXObject(op string) error {
 // inherits its parent's, which may hold the form itself.
 const maxFormDepth = 32
 
+// maxFormRuns bounds the forms run on one page: depth alone lets a form
+// that draws itself twice run 2^maxFormDepth times.
+const maxFormRuns = 10000
+
+// formBudget is shared by a page's interpreter and all its sub-interpreters.
+type formBudget struct {
+	runs   int
+	warned bool
+}
+
 func (in *Interpreter) processXObject(name Name) error {
 	// Look up XObject in Resources
 	if in.Resources == nil {
@@ -93,8 +103,16 @@ func (in *Interpreter) processXObject(name Name) error {
 
 // processFormXObject handles Form XObjects which contain nested content streams
 func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
-	if in.formDepth >= maxFormDepth {
-		return fmt.Errorf("form nesting deeper than %d", maxFormDepth)
+	if in.forms == nil {
+		in.forms = &formBudget{}
+	}
+	in.forms.runs++
+	if in.formDepth >= maxFormDepth || in.forms.runs > maxFormRuns {
+		if !in.forms.warned {
+			in.forms.warned = true
+			log.Printf("Warning: skipping form XObject %s: nesting deeper than %d or more than %d forms on the page", name, maxFormDepth, maxFormRuns)
+		}
+		return nil
 	}
 	// Get the Form's Resources dictionary (may inherit from parent)
 	var formResources Dictionary
@@ -150,6 +168,7 @@ func (in *Interpreter) processFormXObject(name Name, stream *Stream) error {
 	}
 	subInterpreter := NewInterpreter(fm, formResources)
 	subInterpreter.formDepth = in.formDepth + 1
+	subInterpreter.forms = in.forms
 
 	// Copy current CTM so Form content is positioned correctly
 	subInterpreter.State.CTM = in.State.CTM

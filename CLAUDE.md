@@ -214,7 +214,7 @@ Shared cache primitives live in `internal/modelcache/` (used by both
 - **Font size is in points** - 1 point = 1/72 inch
 - **Column detection threshold** - Default 10.0 pixels (`ColumnGapThreshold`)
 - **Header detection ratio** - Default 1.2x body font size (`HeaderSizeRatio`)
-- **Word gap** - `types.WordGapEm` (0.125 em) decides spaces from TJ offsets and same-line gaps
+- **Word gap** - `types.IsWordGap`: a gap over half the font's space width is a word space (TJ offsets and same-line gaps)
 
 ### ONNX Technical Notes
 

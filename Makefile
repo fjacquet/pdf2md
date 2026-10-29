@@ -39,6 +39,7 @@ test:
 
 build:
 	go build -v ./...
+	go build -o pdf2md ./cmd/pdf2md
 
 vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...

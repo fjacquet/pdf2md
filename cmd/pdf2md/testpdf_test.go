@@ -40,16 +40,29 @@ func writePDF(t *testing.T, runs []run) string {
 // pdfFonts as /F1, /F2, ….
 func writePDFStream(t *testing.T, stream string) string {
 	t.Helper()
+	return writePDFWithImage(t, stream, "")
+}
 
+// writePDFWithImage is writePDFStream plus image, when not empty, as XObject /Im1.
+func writePDFWithImage(t *testing.T, stream, image string) string {
+	t.Helper()
+
+	xobject := ""
+	if image != "" {
+		xobject = " /XObject << /Im1 8 0 R >>"
+	}
 	objs := []string{
 		"<< /Type /Catalog /Pages 2 0 R >>",
 		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R " +
-			"/Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >> >> >>",
+			"/Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >>" + xobject + " >> >>",
 		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(stream), stream),
 	}
 	for _, f := range pdfFonts {
 		objs = append(objs, fmt.Sprintf("<< /Type /Font /Subtype /Type1 /BaseFont /%s /Encoding /WinAnsiEncoding >>", f))
+	}
+	if image != "" {
+		objs = append(objs, image)
 	}
 
 	var b strings.Builder

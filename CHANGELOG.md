@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A form XObject that draws itself twice no longer hangs the converter: forms run per page are capped at 10,000 on top of the nesting depth of 32, and the skip is logged once.
+- `[/FlateDecode /RunLengthDecode]` chains are held to the 256 MiB decode cap (a 17 KB file used to decode to 1 GiB).
+- When images cannot be saved, the Markdown no longer links the PDF's own XObject names.
+- A numbered section followed by its subsection ("2. Methods", "2.1. Data Collection") stays two headings instead of becoming a list; same for bold ones.
+- A paragraph line that starts with a number ("2. The result was positive and") followed by a lower-case line is no longer a heading.
+- Large text with no letter or digit (an ornament such as "· · ·") is no longer a heading.
+- `make build` writes `./pdf2md` again, the binary `make benchmark` runs.
+
 ## [0.5.1] - 2026-10-29
 
 ### Fixed

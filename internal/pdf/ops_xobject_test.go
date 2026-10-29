@@ -129,12 +129,9 @@ func TestFormFonts(t *testing.T) {
 	}
 }
 
-// form returns a Form XObject stream running content, with optional resources.
-func form(content string, resources Dictionary, matrix Array) Stream {
+// form returns a Form XObject stream running content, without /Resources.
+func form(content string, matrix Array) Stream {
 	d := Dictionary{Name("Type"): Name("XObject"), Name("Subtype"): Name("Form")}
-	if resources != nil {
-		d[Name("Resources")] = resources
-	}
 	if matrix != nil {
 		d[Name("Matrix")] = matrix
 	}
@@ -155,13 +152,22 @@ func runPage(t *testing.T, content string, resources Dictionary) []types.TextBlo
 // Run alone: the failure mode is a fatal stack overflow. A form without
 // /Resources inherits the page's, which hold the form itself.
 func TestForm_SelfReference(t *testing.T) {
-	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("/Fm1 Do", nil, nil)}}
+	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("/Fm1 Do", nil)}}
 	runPage(t, "/Fm1 Do BT /F1 10 Tf (after) Tj ET", page)
+}
+
+// A form drawing itself twice is 2^depth runs: the page's form budget, not
+// the depth, ends it. Used to hang.
+func TestForm_FanOutBounded(t *testing.T) {
+	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("/Fm1 Do /Fm1 Do", nil)}}
+	if b := runPage(t, "/Fm1 Do BT /F1 10 Tf (after) Tj ET", page); len(b) != 1 || b[0].Text != "after" {
+		t.Errorf("blocks = %+v, want the text after the form", b)
+	}
 }
 
 // Bounded by depth, not by a seen-set: a form drawn twice renders twice.
 func TestForm_DrawnTwice(t *testing.T) {
-	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("BT /F1 10 Tf (logo) Tj ET", nil, nil)}}
+	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("BT /F1 10 Tf (logo) Tj ET", nil)}}
 	if b := runPage(t, "/Fm1 Do /Fm1 Do", page); len(b) != 2 {
 		t.Errorf("got %d blocks, want 2", len(b))
 	}
@@ -170,7 +176,7 @@ func TestForm_DrawnTwice(t *testing.T) {
 // §8.10.1: the form's /Matrix applies before the CTM. poppler puts this text at x = 2·(100+10) = 220.
 func TestForm_MatrixOrder(t *testing.T) {
 	m := Array{Integer(1), Integer(0), Integer(0), Integer(1), Integer(100), Integer(0)}
-	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("BT /F1 12 Tf 10 300 Td (A) Tj ET", nil, m)}}
+	page := Dictionary{Name("XObject"): Dictionary{Name("Fm1"): form("BT /F1 12 Tf 10 300 Td (A) Tj ET", m)}}
 	b := runPage(t, "2 0 0 2 0 0 cm /Fm1 Do", page)
 	if len(b) != 1 || b[0].X != 220 {
 		t.Errorf("blocks = %+v, want one block at X 220", b)

@@ -24,7 +24,8 @@ type Interpreter struct {
 	Images     []types.Image
 	Graphics   []types.VectorGraphic
 
-	formDepth int // nesting level of Form XObjects, 0 for the page
+	formDepth int         // nesting level of Form XObjects, 0 for the page
+	forms     *formBudget // forms run on this page, shared with sub-interpreters
 }
 
 // NewInterpreter creates a new interpreter
