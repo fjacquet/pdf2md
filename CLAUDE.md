@@ -131,7 +131,7 @@ Custom pure Go PDF parser that handles:
 
 - **Column detection** - Analyzes X positions to find column boundaries
 - **Reading order** - `stream_order.go` keeps content-stream order; `sorter.go` (XY-cut) only for pages where the stream jumps back up within a column on more than 10% of line transitions
-- **Header detection** - A line is a heading when larger than 1.2x body text, bold and alone, or numbered and alone (runs of numbered or bold lines are lists/paragraphs). Levels come from `RankHeaderLevels`: the document's heading styles (size rounded to 0.5 pt, bold) ranked largest first, `#` to `######`
+- **Header detection** - A line is a heading when larger than 1.2x body text, bold and alone, or numbered and alone (runs of numbered or bold lines are lists/paragraphs). Levels come from `RankHeaderLevels`: the document's heading styles (size rounded to 0.5 pt, bold) ranked largest first, `#` to `######`; within one style a deeper section number ("1.1" under "1") ranks lower
 - **Element classification** - Rule-based system in `analyzer.go` for headers, code blocks, lists, tables, admonitions
 - **ONNX integration** - `analyzer_onnx.go` fuses ML detections with rule-based analysis
 - **TOC detection** - `analyzer_toc.go` identifies and removes table of contents

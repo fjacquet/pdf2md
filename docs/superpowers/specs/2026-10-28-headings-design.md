@@ -105,8 +105,11 @@ Causes, read in `internal/layout`:
   it simple and deterministic.
 - Heading style key: font size rounded to 0.5 pt, plus bold. Same size and
   bold ranks above same size not bold.
-- Numbering depth ("2.3.1") never overrides the style rank; it only decides
-  whether a numbered line is a heading at all.
+- Numbering depth ("2.3.1") never overrides the style rank. *(Revised after
+  the v0.5.0 review, with the user's approval: within one style, a deeper
+  number ranks one level lower, so "1", "1.1", "1.1.1" set alike stay
+  #, ##, ###; unnumbered headings of that style sit with its shallowest
+  number.)*
 - Isolation for bold headings: the element is one line and the next element
   is not bold text of the same size continuing the block.
 - "Styled as a heading" means font size above `body × HeaderSizeRatio`
