@@ -110,3 +110,25 @@ func TestStdoutIsOnlyMarkdown(t *testing.T) {
 		t.Errorf("conversion wrote to stdout: %q", printed)
 	}
 }
+
+// When images cannot be saved, the Markdown must not link the PDF's own
+// XObject names: an attacker chooses them, URL and ")" included.
+func TestConvertPDFToMarkdown_ImageSaveFails(t *testing.T) {
+	pdf := writePDFWithImage(t, "q 100 0 0 100 72 500 cm /Im1 Do Q BT /F1 12 Tf 72 400 Td (Caption) Tj ET",
+		"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length 3 >>\nstream\n\xff\x00\x00\nendstream")
+
+	dir := t.TempDir()
+	md, err := convertPDFToMarkdown(pdf, filepath.Join(dir, "out.md"), convertOptions{})
+	if err != nil || !strings.Contains(md, "](images/") {
+		t.Fatalf("saved: markdown = %q, err %v; want an images/ link", md, err)
+	}
+
+	dir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "images"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	md, err = convertPDFToMarkdown(pdf, filepath.Join(dir, "out.md"), convertOptions{})
+	if err != nil || strings.Contains(md, "Im1") || !strings.Contains(md, "Caption") {
+		t.Errorf("not saved: markdown = %q, err %v; want the caption and no Im1 link", md, err)
+	}
+}

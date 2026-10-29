@@ -228,10 +228,13 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 		savedPaths, err := extractor.SaveImages(content.Images, outputDir, prefix, i+1)
 		if err != nil {
 			logger.Error("Failed to save images", "error", err)
-		} else {
-			// Update Image IDs to be the relative paths for Markdown
-			for j, path := range savedPaths {
-				content.Images[j].ID = path // "" when not saved: nothing to link
+		}
+		// IDs become the saved relative paths, "" when not saved: nothing to
+		// link, and never the PDF's own names.
+		for j := range content.Images {
+			content.Images[j].ID = ""
+			if j < len(savedPaths) {
+				content.Images[j].ID = savedPaths[j]
 			}
 		}
 
@@ -239,10 +242,11 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 		savedGraphicsPaths, err := extractor.SaveGraphics(content.Graphics, outputDir, prefix, i+1)
 		if err != nil {
 			logger.Error("Failed to save graphics", "error", err)
-		} else {
-			// Update Graphic IDs to be the relative paths for Markdown
-			for j, path := range savedGraphicsPaths {
-				content.Graphics[j].ID = path // "" when not saved: nothing to link
+		}
+		for j := range content.Graphics {
+			content.Graphics[j].ID = ""
+			if j < len(savedGraphicsPaths) {
+				content.Graphics[j].ID = savedGraphicsPaths[j]
 			}
 		}
 

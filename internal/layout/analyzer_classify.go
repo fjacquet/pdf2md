@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // classifyElement determines the type of an element based on its content and properties
@@ -43,8 +44,9 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 		}
 
 		// Large text starting lower case continues a sentence; anything else
-		// (capital, digit, ".NET", "(a)") may start a heading.
-		if unicode.IsLower(firstChar) {
+		// (capital, digit, ".NET", "(a)") may start a heading. Text with no
+		// letter or digit ("· · ·") is an ornament: it titles nothing.
+		if unicode.IsLower(firstChar) || !strings.ContainsFunc(cleanText, isLetterOrDigit) {
 			element.Type = ElementTypeParagraph
 			return
 		}
@@ -653,8 +655,10 @@ func stripBold(text string) string {
 
 // demoteNumberedRuns turns runs of adjacent numbered headers in body style
 // into list items: a numbered heading stands alone between paragraphs, while
-// "1. Wash", "2. Slice" in a row is a list. Larger or bold numbered lines stay
-// headings.
+// "1. Wash", "2. Slice" in a row is a list. List items share one numbering
+// depth, so "2. Methods" then "2.1. Data" stay headings. A numbered line
+// followed by a lower-case line on the next line is a wrapped sentence.
+// Larger or bold numbered lines stay headings.
 func (a *Analyzer) demoteNumberedRuns(elements []Element, bodyFontSize float64) []Element {
 	plain := func(e Element) bool {
 		return e.Type == ElementTypeHeader && !e.Bold && e.FontSize <= bodyFontSize*a.HeaderSizeRatio &&
@@ -662,19 +666,34 @@ func (a *Analyzer) demoteNumberedRuns(elements []Element, bodyFontSize float64) 
 	}
 	for i := 0; i < len(elements); {
 		j := i
-		for j < len(elements) && plain(elements[j]) {
+		for j < len(elements) && plain(elements[j]) &&
+			numberingDepth(elements[j].Content) == numberingDepth(elements[i].Content) {
 			j++
 		}
-		if j-i >= 2 {
+		switch {
+		case j-i >= 2:
 			for k := i; k < j; k++ {
 				elements[k].Type = ElementTypeList
 				elements[k].Level = 1
 			}
+		case j == i+1 && j < len(elements) && continuesSentence(elements[i], elements[j]):
+			elements[i].Type = ElementTypeParagraph
+			elements[i].Level = 0
 		}
 		i = max(j, i+1)
 	}
 	return elements
 }
+
+// continuesSentence reports whether next is a paragraph line right below e
+// that starts lower case, i.e. e is a line wrapped inside a sentence.
+func continuesSentence(e, next Element) bool {
+	first, _ := utf8.DecodeRuneInString(strings.TrimLeft(next.Content, "*"))
+	return next.Type == ElementTypeParagraph && unicode.IsLower(first) &&
+		math.Abs(next.Y-e.Y) < 2*e.FontSize
+}
+
+func isLetterOrDigit(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
 
 // demoteBoldRuns turns runs of bold body-size headers on consecutive lines
 // back into bold paragraph lines: a heading stands alone; consecutive bold
@@ -686,6 +705,8 @@ func (a *Analyzer) demoteBoldRuns(elements []Element, bodyFontSize float64) []El
 	for i := 0; i < len(elements); {
 		j := i + 1
 		for j < len(elements) && boldLine(elements[i]) && boldLine(elements[j]) &&
+			// "1. Introduction" over "1.1. Background" is a section and its subsection.
+			numberingDepth(stripBold(elements[j].Content)) == numberingDepth(stripBold(elements[j-1].Content)) &&
 			math.Abs(elements[j].FontSize-elements[j-1].FontSize) <= 0.5 &&
 			math.Abs(elements[j].Y-elements[j-1].Y) < 2*elements[j-1].FontSize {
 			j++

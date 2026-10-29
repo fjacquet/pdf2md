@@ -461,3 +461,43 @@ func TestHeading_NumberedBodyLineAloneIsHeading(t *testing.T) {
 		t.Errorf("got %q, want a header", got)
 	}
 }
+
+// A section opening straight into its subsection is not a list: list items
+// share one numbering depth.
+func TestHeading_SectionThenSubsection(t *testing.T) {
+	got := typeOf(t,
+		tb("2. Methods", "Helvetica", 10, 700),
+		tb("2.1. Data Collection", "Helvetica", 10, 688),
+		tb("We collected data from the survey.", "Helvetica", 10, 670))
+	if !isHeader(got, "2. Methods") || !isHeader(got, "2.1. Data Collection") {
+		t.Errorf("got %q, want both numbered lines as headers", got)
+	}
+}
+
+func TestHeading_BoldSectionThenSubsection(t *testing.T) {
+	got := typeOf(t,
+		tb("1. Introduction", "Helvetica-Bold", 10, 700),
+		tb("1.1. Background", "Helvetica-Bold", 10, 684),
+		tb("We start from earlier work.", "Helvetica", 10, 666))
+	if !isHeader(got, "1. Introduction") || !isHeader(got, "1.1. Background") {
+		t.Errorf("got %q, want both bold numbered lines as headers", got)
+	}
+}
+
+// A paragraph line that happens to start with "2." continues the sentence.
+func TestHeading_NumberedLineWrapsInParagraph(t *testing.T) {
+	got := typeOf(t,
+		tb("The outcome is as shown in", "Helvetica", 10, 700),
+		tb("2. The result was positive and", "Helvetica", 10, 688),
+		tb("the experiment ended after that step.", "Helvetica", 10, 676))
+	if isHeader(got, "2. The result was positive and") {
+		t.Errorf("got %q, want no header", got)
+	}
+}
+
+// An ornament has no word to title anything, and ranking would give it #.
+func TestHeading_LetterlessLargeTextIsNotHeading(t *testing.T) {
+	if got := typeOf(t, tb("· · ·", "Helvetica", 24, 700)); isHeader(got, "· · ·") {
+		t.Errorf("got %q, want no header", got)
+	}
+}

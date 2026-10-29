@@ -362,3 +362,17 @@ func TestDecodeLZW_Limit(t *testing.T) {
 		t.Errorf("2 bytes under a 2-byte limit: %q, %v; want 2 bytes, nil", out, err)
 	}
 }
+
+// After FlateDecode in a filter chain, RunLength input is up to the cap and
+// expands 64x: [/FlateDecode /RunLengthDecode] decoded 1 GiB from 17 KB.
+func TestDecodeRunLength_Limit(t *testing.T) {
+	run := []byte{129, 'x'} // 128 copies of 'x'
+	withDecodeLimit(t, 127)
+	if _, err := decodeRunLength(run); !errors.Is(err, ErrStreamTooLarge) {
+		t.Errorf("128 bytes under a 127-byte limit: err = %v, want ErrStreamTooLarge", err)
+	}
+	withDecodeLimit(t, 128)
+	if out, err := decodeRunLength(run); err != nil || len(out) != 128 {
+		t.Errorf("128 bytes under a 128-byte limit: len %d, err %v; want 128, nil", len(out), err)
+	}
+}

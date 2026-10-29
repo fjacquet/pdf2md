@@ -18,7 +18,7 @@ var ErrFilterUnsupported = errors.New("pdf: filter unsupported")
 // maxDecodedStream bytes.
 var ErrStreamTooLarge = errors.New("pdf: decoded stream too large")
 
-// maxDecodedStream caps one decoded Flate or LZW stream. It sits above a
+// maxDecodedStream caps one decoded Flate, LZW or RunLength stream. It sits above a
 // legitimate image (an RGB letter page at 600 dpi is about 100 MB) and below
 // what a small compressed stream can expand to (1 MB can hold 1 GiB).
 // shortcut: per-stream cap only; the total across streams is unbounded, add a document budget if batch ingestion needs one.
@@ -134,11 +134,15 @@ func decodeRunLength(data []byte) ([]byte, error) {
 			if i >= len(data) {
 				return nil, fmt.Errorf("RunLengthDecode: repeat run truncated")
 			}
-			b := data[i]
+			b := data[i] //nolint:gosec // G602 false positive: i < len(data) checked above
 			i++
 			for j := 0; j < 257-length; j++ {
 				out.WriteByte(b)
 			}
+		}
+		// Bytes from the file expand at most 128x, but a chain feeds it Flate output.
+		if int64(out.Len()) > maxDecodedStream {
+			return nil, fmt.Errorf("%w: RunLengthDecode over %d bytes", ErrStreamTooLarge, maxDecodedStream)
 		}
 	}
 	// No explicit EOD is acceptable per spec leniency.
