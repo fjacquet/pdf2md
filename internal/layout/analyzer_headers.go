@@ -10,14 +10,31 @@ import (
 // RankHeaderLevels sets every header's level from the document's own
 // hierarchy: its largest heading style is #, the next ##, and so on, capped at
 // ######. A style is the font size rounded to 0.5 pt plus the bold flag; at
-// the same size bold ranks first.
+// the same size bold ranks first. Within one style, deeper section numbers
+// ("1.1" under "1") rank lower; unnumbered headers sit with the shallowest.
 func (a *Analyzer) RankHeaderLevels(elements []Element) []Element {
 	type style struct {
-		size float64
-		bold bool
+		size  float64
+		bold  bool
+		depth int
 	}
 	// ONNX and table-row headers skip classifyElement, so Bold is only in the markers.
-	key := func(e Element) style { return style{math.Round(e.FontSize*2) / 2, e.Bold || fullyBold(e.Content)} }
+	base := func(e Element) style { return style{math.Round(e.FontSize*2) / 2, e.Bold || fullyBold(e.Content), 0} }
+	shallowest := map[style]int{}
+	for _, e := range elements {
+		if d := numberingDepth(stripBold(e.Content)); e.Type == ElementTypeHeader && d > 0 {
+			if m, ok := shallowest[base(e)]; !ok || d < m {
+				shallowest[base(e)] = d
+			}
+		}
+	}
+	key := func(e Element) style {
+		s := base(e)
+		if s.depth = numberingDepth(stripBold(e.Content)); s.depth == 0 {
+			s.depth = shallowest[base(e)]
+		}
+		return s
+	}
 	var styles []style
 	for _, e := range elements {
 		if e.Type == ElementTypeHeader && !slices.Contains(styles, key(e)) {
@@ -28,13 +45,13 @@ func (a *Analyzer) RankHeaderLevels(elements []Element) []Element {
 		if x.size != y.size {
 			return cmp.Compare(y.size, x.size)
 		}
-		switch {
-		case x.bold == y.bold:
-			return 0
-		case x.bold:
-			return -1
+		if x.bold != y.bold {
+			if x.bold {
+				return -1
+			}
+			return 1
 		}
-		return 1
+		return cmp.Compare(x.depth, y.depth)
 	})
 	for i := range elements {
 		if elements[i].Type == ElementTypeHeader {
@@ -42,6 +59,19 @@ func (a *Analyzer) RankHeaderLevels(elements []Element) []Element {
 		}
 	}
 	return elements
+}
+
+// numberingDepth is the depth of a leading section number ("2" is 1, "2.1."
+// is 2), or 0 when the text does not start with one.
+func numberingDepth(text string) int {
+	marker, _, _ := strings.Cut(text, " ")
+	parts := strings.Split(strings.TrimSuffix(marker, "."), ".")
+	for _, p := range parts {
+		if p == "" || strings.Trim(p, "0123456789") != "" {
+			return 0
+		}
+	}
+	return len(parts)
 }
 
 // FilterPageNumbers removes standalone page numbers from the output
