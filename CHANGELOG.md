@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-29
+
 ### Fixed
 
 - A form XObject that draws itself twice no longer hangs the converter: forms run per page are capped at 10,000 on top of the nesting depth of 32, and the skip is logged once.
