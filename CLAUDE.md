@@ -310,6 +310,7 @@ for page := 1; page <= pageCount; page++ {
     // ...
 }
 
+allElements = analyzer.RankHeaderLevels(allElements)
 md := builder.Build(allElements)
 ```
 

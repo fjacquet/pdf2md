@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Bold headings promoted by ONNX layout detection or from a numbered table row rank with the other bold headings of the same size instead of one level deeper.
+- `examples/basic_usage.go` and the library usage notes call `RankHeaderLevels`, so library output gets the same heading levels as the CLI.
+
 ## [0.5.0] - 2026-10-28
 
 ### Fixed
