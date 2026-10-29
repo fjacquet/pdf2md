@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-29
+
 ### Fixed
 
 - Bold headings promoted by ONNX layout detection or from a numbered table row rank with the other bold headings of the same size instead of one level deeper.
