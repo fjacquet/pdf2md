@@ -527,15 +527,22 @@ func sortY(blocks []extractor.TextBlock) []extractor.TextBlock {
 	// 2. Group into rows based on Y proximity
 	var rows [][]extractor.TextBlock
 	currentRow := []extractor.TextBlock{sorted[0]}
+	// anchor is the row's largest-font block: its baseline, not that of a
+	// superscript seen first, is what a subscript sits below.
+	anchor := sorted[0]
 
 	for i := 1; i < len(sorted); i++ {
 		// If Y diff is small, add to current row
-		if math.Abs(sorted[i].Y-currentRow[0].Y) <= 4.0 { // Increased tolerance to 4.0
+		if math.Abs(sorted[i].Y-anchor.Y) <= 4.0 { // Increased tolerance to 4.0
 			currentRow = append(currentRow, sorted[i])
+			if sorted[i].FontSize > anchor.FontSize {
+				anchor = sorted[i]
+			}
 		} else {
 			// New row
 			rows = append(rows, currentRow)
 			currentRow = []extractor.TextBlock{sorted[i]}
+			anchor = sorted[i]
 		}
 	}
 	rows = append(rows, currentRow)
