@@ -447,6 +447,14 @@ func (a *Analyzer) MergeParagraphLines(elements []Element) []Element {
 
 	var merged []Element
 	current := &elements[0]
+	// The gap to the next line is measured from current's last line, while
+	// current.Y stays the paragraph's top.
+	lastY := func(e *Element) float64 {
+		if e.LastY != 0 {
+			return e.LastY
+		}
+		return e.Y
+	}
 
 	for i := 1; i < len(elements); i++ {
 		next := elements[i]
@@ -457,7 +465,7 @@ func (a *Analyzer) MergeParagraphLines(elements []Element) []Element {
 				continue
 			}
 
-			gap := math.Abs(current.Y - next.Y)
+			gap := math.Abs(lastY(current) - next.Y)
 
 			// Check for sentence break
 			isSentenceBreak := false
@@ -485,6 +493,7 @@ func (a *Analyzer) MergeParagraphLines(elements []Element) []Element {
 					current.Content += " "
 				}
 				current.Content += next.Content
+				current.LastY = lastY(&next)
 			} else {
 				merged = append(merged, *current)
 				current = &elements[i]
