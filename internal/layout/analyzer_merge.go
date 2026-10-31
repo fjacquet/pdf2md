@@ -81,6 +81,19 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 	for i := 1; i < len(elements); i++ {
 		next := elements[i]
 
+		// A superscript or subscript joins its line as $^{…}$ / $_{…}$.
+		if mark := scriptMark(current, next); mark != "" {
+			current = a.mergeElementsWithLinks(current, asScript(next, mark), "")
+			current.Content = joinScripts.Replace(current.Content)
+			continue
+		}
+		if mark := scriptMark(next, current); mark != "" {
+			host := next
+			current = a.mergeElementsWithLinks(asScript(current, mark), next, "")
+			current.Y, current.Height, current.FontSize, current.SpaceWidth, current.Bold = host.Y, host.Height, host.FontSize, host.SpaceWidth, host.Bold
+			continue
+		}
+
 		// Check if elements are on the same line
 		yDiff := math.Abs(current.Y - next.Y)
 		if yDiff < 2.0 {
@@ -144,6 +157,48 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 
 	merged = append(merged, current)
 	return merged
+}
+
+// scriptMark returns "^" when s is a superscript of host, "_" when it is a
+// subscript, "" otherwise: a smaller font (at most 0.85x), its baseline
+// 0.12-0.45 em off host's, and touching host horizontally (within 1 em).
+func scriptMark(host, s Element) string {
+	em := host.FontSize
+	if em <= 0 || s.FontSize > 0.85*em || scriptText(s.Content) == "" {
+		return ""
+	}
+	dy := s.Y - host.Y
+	if math.Abs(dy) < 0.12*em || math.Abs(dy) > 0.45*em {
+		return ""
+	}
+	gap := max(s.X-(host.X+host.Width), host.X-(s.X+s.Width))
+	if gap > em || gap < -0.5*em {
+		return ""
+	}
+	if dy > 0 {
+		return "^"
+	}
+	return "_"
+}
+
+// joinScripts joins a script drawn in pieces: "^{−}^{1}" -> "^{−1}".
+var joinScripts = strings.NewReplacer("}^{", "", "}_{", "")
+
+// asScript rewrites e's text as a LaTeX script: "9" -> "$^{9}$".
+func asScript(e Element, mark string) Element {
+	e.Content = "$" + mark + "{" + scriptText(e.Content) + "}$"
+	return e
+}
+
+// scriptText is a script's printable text without math markers; glyphs with
+// no text mapping (control characters) leave it empty.
+func scriptText(s string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if r == '$' || !unicode.IsGraphic(r) {
+			return -1
+		}
+		return r
+	}, s))
 }
 
 // mergeElementsWithLinks merges two elements handling their LinkURIs
