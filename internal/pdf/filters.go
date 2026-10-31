@@ -189,6 +189,11 @@ func applyPredictor(data []byte, predictor, columns, colors, bpc int) ([]byte, e
 	// Rows are (Columns * Colors * BitsPerComponent / 8) bytes wide + 1 byte for filter type
 	// But usually bpc=8, so bytesPerPixel = Colors.
 
+	// DecodeParms come from the file: refuse values that would overflow or go negative.
+	if columns <= 0 || colors <= 0 || bpc <= 0 || columns > 1<<20 || colors > 32 || bpc > 16 {
+		return nil, fmt.Errorf("pdf: invalid predictor parameters columns=%d colors=%d bpc=%d", columns, colors, bpc)
+	}
+
 	bytesPerPixel := (colors*bpc + 7) / 8
 	rowLen := (columns*colors*bpc + 7) / 8
 	stride := rowLen + 1 // +1 for filter byte

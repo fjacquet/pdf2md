@@ -211,77 +211,83 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 	}
 
 	for i := range pageCount {
-		// Extract content
-		content, err := ext.ExtractTextBlocks(i + 1)
+		elements, err := recoverPage(func() ([]layout.Element, error) {
+			// Extract content
+			content, err := ext.ExtractTextBlocks(i + 1)
+			if err != nil {
+				return nil, err
+			}
+
+			// Save images
+			outputDir := filepath.Dir(outputPath)
+			if outputPath == "" {
+				outputDir = "."
+			}
+			prefix := strings.TrimSuffix(filepath.Base(inputPath), filepath.Ext(inputPath))
+
+			savedPaths, err := extractor.SaveImages(content.Images, outputDir, prefix, i+1)
+			if err != nil {
+				logger.Error("Failed to save images", "error", err)
+			}
+			// IDs become the saved relative paths, "" when not saved: nothing to
+			// link, and never the PDF's own names.
+			for j := range content.Images {
+				content.Images[j].ID = ""
+				if j < len(savedPaths) {
+					content.Images[j].ID = savedPaths[j]
+				}
+			}
+
+			// Save graphics
+			savedGraphicsPaths, err := extractor.SaveGraphics(content.Graphics, outputDir, prefix, i+1)
+			if err != nil {
+				logger.Error("Failed to save graphics", "error", err)
+			}
+			for j := range content.Graphics {
+				content.Graphics[j].ID = ""
+				if j < len(savedGraphicsPaths) {
+					content.Graphics[j].ID = savedGraphicsPaths[j]
+				}
+			}
+
+			// Set exclusion zones
+			analyzer.Exclusion = layout.ExclusionZone{
+				Top:    opts.excludeTop,
+				Bottom: opts.excludeBottom,
+			}
+
+			// Render page image — used by both ONNX detection and OCR fallback.
+			var pageImage image.Image
+			needsImage := (renderer != nil) && (detector != nil || recognizer != nil)
+			if needsImage {
+				pageImage, err = renderer.RenderPage(i, 0) // 0-indexed, default DPI
+				if err != nil {
+					logger.Warn("Failed to render page", "page", i+1, "error", err)
+				}
+			}
+
+			// OCR fallback: when the page has no extractable text (scanned/image-only),
+			// enrich content.TextBlocks with recognized text before layout analysis.
+			if recognizer != nil && len(content.TextBlocks) == 0 && pageImage != nil {
+				ocrBlocks, ocrErr := recognizer.RecognizePage(pageImage, content.PageWidth, content.PageHeight)
+				if ocrErr != nil {
+					logger.Warn("OCR failed", "page", i+1, "error", ocrErr)
+				} else if len(ocrBlocks) > 0 {
+					logger.Debug("OCR enriched page", "page", i+1, "blocks", len(ocrBlocks))
+					content.TextBlocks = ocrBlocks
+				}
+			}
+
+			// Analyze layout with ONNX detection (falls back to rule-based if no image)
+			elements := analyzer.AnalyzeWithImage(content, pageImage)
+			// Merge consecutive elements on same line
+			elements = analyzer.MergeElements(elements)
+			return elements, nil
+		})
 		if err != nil {
 			logger.Error("Failed to extract page", "page", i+1, "error", err)
 			continue
 		}
-
-		// Save images
-		outputDir := filepath.Dir(outputPath)
-		if outputPath == "" {
-			outputDir = "."
-		}
-		prefix := strings.TrimSuffix(filepath.Base(inputPath), filepath.Ext(inputPath))
-
-		savedPaths, err := extractor.SaveImages(content.Images, outputDir, prefix, i+1)
-		if err != nil {
-			logger.Error("Failed to save images", "error", err)
-		}
-		// IDs become the saved relative paths, "" when not saved: nothing to
-		// link, and never the PDF's own names.
-		for j := range content.Images {
-			content.Images[j].ID = ""
-			if j < len(savedPaths) {
-				content.Images[j].ID = savedPaths[j]
-			}
-		}
-
-		// Save graphics
-		savedGraphicsPaths, err := extractor.SaveGraphics(content.Graphics, outputDir, prefix, i+1)
-		if err != nil {
-			logger.Error("Failed to save graphics", "error", err)
-		}
-		for j := range content.Graphics {
-			content.Graphics[j].ID = ""
-			if j < len(savedGraphicsPaths) {
-				content.Graphics[j].ID = savedGraphicsPaths[j]
-			}
-		}
-
-		// Set exclusion zones
-		analyzer.Exclusion = layout.ExclusionZone{
-			Top:    opts.excludeTop,
-			Bottom: opts.excludeBottom,
-		}
-
-		// Render page image — used by both ONNX detection and OCR fallback.
-		var pageImage image.Image
-		needsImage := (renderer != nil) && (detector != nil || recognizer != nil)
-		if needsImage {
-			pageImage, err = renderer.RenderPage(i, 0) // 0-indexed, default DPI
-			if err != nil {
-				logger.Warn("Failed to render page", "page", i+1, "error", err)
-			}
-		}
-
-		// OCR fallback: when the page has no extractable text (scanned/image-only),
-		// enrich content.TextBlocks with recognized text before layout analysis.
-		if recognizer != nil && len(content.TextBlocks) == 0 && pageImage != nil {
-			ocrBlocks, ocrErr := recognizer.RecognizePage(pageImage, content.PageWidth, content.PageHeight)
-			if ocrErr != nil {
-				logger.Warn("OCR failed", "page", i+1, "error", ocrErr)
-			} else if len(ocrBlocks) > 0 {
-				logger.Debug("OCR enriched page", "page", i+1, "blocks", len(ocrBlocks))
-				content.TextBlocks = ocrBlocks
-			}
-		}
-
-		// Analyze layout with ONNX detection (falls back to rule-based if no image)
-		elements := analyzer.AnalyzeWithImage(content, pageImage)
-		// Merge consecutive elements on same line
-		elements = analyzer.MergeElements(elements)
 
 		allElements = append(allElements, elements...)
 	}
@@ -306,4 +312,15 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 	md := builder.Build(allElements)
 
 	return md, nil
+}
+
+// recoverPage runs one page's conversion and turns a panic into an error, so a
+// broken page costs that page, not the whole document.
+func recoverPage(fn func() ([]layout.Element, error)) (elements []layout.Element, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return fn()
 }
