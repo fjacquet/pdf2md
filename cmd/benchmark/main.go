@@ -16,6 +16,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // baseline records per-document scores, the READoc commit they were measured
@@ -32,6 +33,7 @@ func main() {
 	tolerance := flag.Float64("tolerance", 0.02, "allowed score drop per document before failing")
 	cmdTmpl := flag.String("cmd", "./pdf2md --no-onnx --no-ocr {in} {out}", "converter command; {in} is the PDF, {out} the Markdown file (stdout is used when {out} is absent)")
 	outputDir := flag.String("output", "READoc/output/pdf2md", "directory for the converted Markdown")
+	spacingExamples := flag.Int("spacing-examples", 0, "print up to n word-spacing errors per document")
 	flag.Parse()
 
 	dataDir := "READoc/data"
@@ -64,6 +66,7 @@ func main() {
 	type Result struct {
 		File                     string
 		Score, Words, Heads, Hds float64 // Hds: heading F1 ignoring the level
+		Split, Glued             int
 	}
 	var results []Result
 
@@ -131,7 +134,12 @@ func main() {
 		score := calculateSimilarity(string(genBytes), string(gtBytes))
 		gen, gt := string(genBytes), string(gtBytes)
 		r := Result{File: relPath, Score: score, Words: wordF1(gen, gt), Heads: headingF1(gen, gt, true), Hds: headingF1(gen, gt, false)}
-		fmt.Printf("[%s] Similarity: %.4f  Word F1: %.4f  Headings: %.4f (%.4f)\n", parts[len(parts)-1], score, r.Words, r.Heads, r.Hds)
+		var examples []string
+		r.Split, r.Glued, examples = spacing(gen, gt)
+		fmt.Printf("[%s] Similarity: %.4f  Word F1: %.4f  Headings: %.4f (%.4f)  Split: %d  Glued: %d\n", parts[len(parts)-1], score, r.Words, r.Heads, r.Hds, r.Split, r.Glued)
+		for _, e := range examples[:min(len(examples), *spacingExamples)] {
+			fmt.Printf("    %s\n", e)
+		}
 
 		totalScore += score
 		count++
@@ -161,11 +169,13 @@ func main() {
 		}
 		for _, sub := range slices.Sorted(maps.Keys(subsets)) {
 			var h, ht, w float64
+			var split, glued int
 			for _, r := range subsets[sub] {
 				h, ht, w = h+r.Heads, ht+r.Hds, w+r.Words
+				split, glued = split+r.Split, glued+r.Glued
 			}
 			n := float64(len(subsets[sub]))
-			fmt.Printf("%s: headings %.4f (%.4f), words %.4f\n", sub, h/n, ht/n, w/n)
+			fmt.Printf("%s: headings %.4f (%.4f), words %.4f, split %d, glued %d\n", sub, h/n, ht/n, w/n, split, glued)
 		}
 	} else {
 		fmt.Println("No files processed.")
@@ -324,6 +334,51 @@ func wordF1(gen, gt string) float64 {
 		return m
 	}
 	return multisetF1(count(gen), count(gt))
+}
+
+// spacing counts word-spacing errors against the ground truth vocabulary:
+// split is a ground-truth word broken by whitespace into two tokens ("informa
+// tion"), glued is an unknown token that is two adjacent ground-truth words
+// run together ("theresult"). Examples show each error with "|" at the faulty spot.
+func spacing(gen, gt string) (split, glued int, examples []string) {
+	vocab, bigrams := map[string]bool{}, map[string]bool{}
+	words := wordRe.FindAllString(strings.ToLower(gt), -1)
+	for i, w := range words {
+		vocab[w] = true
+		if i > 0 {
+			bigrams[words[i-1]+" "+w] = true
+		}
+	}
+	gen = strings.ToLower(gen)
+	locs := wordRe.FindAllStringIndex(gen, -1)
+	for i, l := range locs {
+		tok := gen[l[0]:l[1]]
+		if i > 0 {
+			p := locs[i-1]
+			prev := gen[p[0]:p[1]]
+			if strings.TrimSpace(gen[p[1]:l[0]]) == "" && isWord(prev) && isWord(tok) && vocab[prev+tok] && (!vocab[prev] || !vocab[tok]) {
+				split++
+				examples = append(examples, "split: "+prev+"|"+tok)
+			}
+		}
+		if vocab[tok] {
+			continue
+		}
+		for j := 2; j <= len(tok)-2; j++ {
+			if isWord(tok[:j]) && isWord(tok[j:]) && bigrams[tok[:j]+" "+tok[j:]] {
+				glued++
+				examples = append(examples, "glued: "+tok[:j]+"|"+tok[j:])
+				break
+			}
+		}
+	}
+	return split, glued, examples
+}
+
+// isWord reports whether a token is a word rather than a number or a math
+// symbol: it starts with a letter. Spacing errors are only counted on words.
+func isWord(tok string) bool {
+	return tok != "" && unicode.IsLetter(rune(tok[0]))
 }
 
 var (
