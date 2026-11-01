@@ -210,6 +210,20 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 		return "", fmt.Errorf("failed to get page count: %w", err)
 	}
 
+	// Body text size is a document property: measured per page, references or
+	// figure labels outvote it and the page's body lines become headings.
+	var sample []extractor.TextBlock
+	for i := range pageCount {
+		_, _ = recoverPage(func() ([]layout.Element, error) {
+			content, err := ext.ExtractTextBlocks(i + 1)
+			if err == nil {
+				sample = append(sample, content.TextBlocks...)
+			}
+			return nil, err
+		})
+	}
+	analyzer.BodyFontSize = layout.BodyFontSize(sample)
+
 	for i := range pageCount {
 		elements, err := recoverPage(func() ([]layout.Element, error) {
 			// Extract content
