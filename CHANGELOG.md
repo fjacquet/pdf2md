@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Negative or oversized `/Columns`, `/Colors` or `/BitsPerComponent` in a PNG predictor return an error instead of panicking.
 - Paragraphs of three lines or more stay one paragraph: the line gap is measured from the last merged line, not the first (they used to split every two lines).
 - In XY-cut reading order, subscripts and superscripts stay on their own line instead of starting a new row.
+- Words hyphenated across a line join back ("impor- tant" is "important") when the document spells them unbroken elsewhere; real compounds keep their hyphen ("well-studied"). Non-breaking hyphens (U+2011) at line end were joined with a space.
 
 ## [0.5.2] - 2026-10-29
 

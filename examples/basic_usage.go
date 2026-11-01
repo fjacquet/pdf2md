@@ -74,7 +74,8 @@ func main() {
 		}
 	}
 
-	// Heading levels come from the whole document's heading styles
+	// Line-end hyphens and heading levels need the whole document
+	allElements = analyzer.ResolveWordBreaks(allElements)
 	allElements = analyzer.RankHeaderLevels(allElements)
 
 	// Step 6: Build markdown

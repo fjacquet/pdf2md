@@ -3,12 +3,61 @@ package layout
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/fjacquet/pdf2md/internal/types"
 )
+
+// softHyphen marks a line-end hyphen that may be a word break, settled by
+// ResolveWordBreaks once the whole document is known.
+const softHyphen = "\u00AD"
+
+// joinWrapped joins a line to the next wrapped line. A line-end hyphen
+// (-, U+2010, U+2011, U+00AD) between lowercase letters becomes a soft hyphen
+// ("impor-" + "tant"); other hyphens stay, unspaced ("2-3").
+func joinWrapped(cur, next string) string {
+	for _, h := range []string{"-", "\u2010", "\u2011", softHyphen} {
+		if word, ok := strings.CutSuffix(cur, h); ok {
+			last, _ := utf8.DecodeLastRuneInString(word)
+			first, _ := utf8.DecodeRuneInString(next)
+			if unicode.IsLower(last) && unicode.IsLower(first) {
+				return word + softHyphen + next
+			}
+			return cur + next
+		}
+	}
+	if strings.HasSuffix(cur, " ") {
+		return cur + next
+	}
+	return cur + " " + next
+}
+
+var brokenWord = regexp.MustCompile(`\pL+(?:\x{00AD}\pL+)+`)
+
+// ResolveWordBreaks settles the soft hyphens joinWrapped left: a word the
+// document also spells unbroken loses its hyphen ("important"), any other
+// keeps it as a compound ("well-studied").
+func (a *Analyzer) ResolveWordBreaks(elements []Element) []Element {
+	known := map[string]bool{}
+	for _, e := range elements {
+		for _, w := range strings.FieldsFunc(e.Content, func(r rune) bool { return !unicode.IsLetter(r) }) {
+			known[strings.ToLower(w)] = true
+		}
+	}
+	for i := range elements {
+		elements[i].Content = brokenWord.ReplaceAllStringFunc(elements[i].Content, func(w string) string {
+			if joined := strings.ReplaceAll(w, softHyphen, ""); known[strings.ToLower(joined)] {
+				return joined
+			}
+			return strings.ReplaceAll(w, softHyphen, "-")
+		})
+	}
+	return elements
+}
 
 // MergeDropCaps merges drop cap letters with their following text
 // Drop caps are large initial letters that appear at the start of paragraphs
@@ -143,7 +192,7 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 					}
 				}
 			default:
-				if strings.HasSuffix(current.Content, "-") || strings.HasSuffix(current.Content, "‐") {
+				if strings.HasSuffix(current.Content, "-") || strings.HasSuffix(current.Content, "\u2010") {
 					current = a.mergeElementsWithLinks(current, next, "")
 				} else {
 					current = a.mergeElementsWithLinks(current, next, " ")
@@ -400,10 +449,7 @@ func (a *Analyzer) MergeListContinuations(elements []Element) []Element {
 				// Merge the continuation into the list item
 				content := strings.TrimSpace(next.Content)
 				if content != "" {
-					if !strings.HasSuffix(current.Content, " ") && !strings.HasSuffix(current.Content, "-") {
-						current.Content += " "
-					}
-					current.Content += content
+					current.Content = joinWrapped(current.Content, content)
 				}
 
 				j++
@@ -544,10 +590,7 @@ func (a *Analyzer) MergeParagraphLines(elements []Element) []Element {
 			isList := a.isListItem(next.Content)
 
 			if gap < threshold && !isList {
-				if !strings.HasSuffix(current.Content, " ") && !strings.HasSuffix(current.Content, "-") {
-					current.Content += " "
-				}
-				current.Content += next.Content
+				current.Content = joinWrapped(current.Content, next.Content)
 				current.LastY = lastY(&next)
 			} else {
 				merged = append(merged, *current)

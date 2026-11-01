@@ -304,6 +304,7 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 	// Post-processing: Merge paragraphs across pages
 	// This handles cases where a sentence starts on one page and ends on the next.
 	allElements = analyzer.MergeParagraphLines(allElements)
+	allElements = analyzer.ResolveWordBreaks(allElements)
 
 	// Post-processing: heading levels from the document's style ranking
 	allElements = analyzer.RankHeaderLevels(allElements)
