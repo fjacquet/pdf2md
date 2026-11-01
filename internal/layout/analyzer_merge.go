@@ -31,9 +31,9 @@ func joinWrapped(cur, next string) string {
 		}
 	}
 	if strings.HasSuffix(cur, " ") {
-		return cur + next
+		return mergeWithStyle(cur, next)
 	}
-	return cur + " " + next
+	return mergeWithStyle(cur, " "+next)
 }
 
 var brokenWord = regexp.MustCompile(`\pL+(?:\x{00AD}\pL+)+`)
@@ -290,18 +290,23 @@ func mergeWithStyle(a, b string) string {
 		separator = " "
 		cleanB = b[1:]
 	}
+	// A space drawn as its own block trails a: "**a** " + "**b**".
+	cleanA := strings.TrimRight(a, " ")
+	if cleanA != a {
+		separator = " "
+	}
 
 	// Check bold
-	if strings.HasSuffix(a, "**") && strings.HasPrefix(cleanB, "**") {
-		return a[:len(a)-2] + separator + cleanB[2:]
+	if strings.HasSuffix(cleanA, "**") && strings.HasPrefix(cleanB, "**") {
+		return cleanA[:len(cleanA)-2] + separator + cleanB[2:]
 	}
 	// Check italic
-	if strings.HasSuffix(a, "*") && strings.HasPrefix(cleanB, "*") {
-		return a[:len(a)-1] + separator + cleanB[1:]
+	if strings.HasSuffix(cleanA, "*") && strings.HasPrefix(cleanB, "*") {
+		return cleanA[:len(cleanA)-1] + separator + cleanB[1:]
 	}
 	// Check math
-	if strings.HasSuffix(a, "$") && strings.HasPrefix(cleanB, "$") {
-		return a[:len(a)-1] + separator + cleanB[1:]
+	if strings.HasSuffix(cleanA, "$") && strings.HasPrefix(cleanB, "$") {
+		return cleanA[:len(cleanA)-1] + separator + cleanB[1:]
 	}
 
 	return a + b

@@ -60,10 +60,7 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 		element.Bold = fullyBold(text)
 		element.Level = a.calculateHeaderLevel(element.FontSize, bodyFontSize)
 		// Strip bold markers from headers (formatting is already implied by header level)
-		content := element.Content
-		if strings.HasPrefix(content, "**") && strings.HasSuffix(content, "**") {
-			element.Content = strings.TrimPrefix(strings.TrimSuffix(content, "**"), "**")
-		}
+		element.Content = stripBold(element.Content)
 		return
 	}
 
@@ -84,7 +81,7 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 			element.Type = ElementTypeHeader
 			element.Bold = true
 			element.Level = 4
-			element.Content = innerText
+			element.Content = stripBold(text)
 			return
 		}
 	}
@@ -659,10 +656,11 @@ func fullyBold(text string) bool {
 	return len(text) > 4 && strings.HasPrefix(text, "**") && strings.HasSuffix(text, "**")
 }
 
-// stripBold removes the ** markers around fully bold text.
+// stripBold removes every ** marker from fully bold text: a heading is bold
+// as a whole, so inner runs ("**a** **b**", "n**$^{**o**}$") go too.
 func stripBold(text string) string {
 	if fullyBold(text) {
-		return strings.TrimSpace(text[2 : len(text)-2])
+		return strings.TrimSpace(strings.ReplaceAll(text, "**", ""))
 	}
 	return text
 }
