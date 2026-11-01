@@ -93,6 +93,10 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# One SPDX SBOM per archive (syft, installed by the release workflow).
+sboms:
+  - artifacts: archive
+
 snapshot:
   version_template: "{{ incpatch .Version }}-dev+{{ .ShortCommit }}"
 

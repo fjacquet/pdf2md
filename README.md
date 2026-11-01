@@ -1,7 +1,12 @@
 # pdf2md - PDF to Markdown Converter
 
 [![CI](https://github.com/fjacquet/pdf2md/actions/workflows/ci.yml/badge.svg)](https://github.com/fjacquet/pdf2md/actions/workflows/ci.yml)
+[![Security](https://github.com/fjacquet/pdf2md/actions/workflows/security.yml/badge.svg)](https://github.com/fjacquet/pdf2md/actions/workflows/security.yml)
 [![Release](https://img.shields.io/github/v/release/fjacquet/pdf2md?sort=semver)](https://github.com/fjacquet/pdf2md/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/fjacquet/pdf2md/total)](https://github.com/fjacquet/pdf2md/releases)
+[![Go Reference](https://pkg.go.dev/badge/github.com/fjacquet/pdf2md.svg)](https://pkg.go.dev/github.com/fjacquet/pdf2md)
+[![Go Report Card](https://goreportcard.com/badge/github.com/fjacquet/pdf2md)](https://goreportcard.com/report/github.com/fjacquet/pdf2md)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/fjacquet/pdf2md)](go.mod)
 [![License](https://img.shields.io/github/license/fjacquet/pdf2md)](https://github.com/fjacquet/pdf2md/blob/HEAD/LICENSE)
 
 A fast, single-binary PDF to Markdown converter written in Go. Designed for AI engineers, researchers, and knowledge workers who need clean, structured Markdown from PDF documents.
