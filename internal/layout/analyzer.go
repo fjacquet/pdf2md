@@ -3,6 +3,7 @@ package layout
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/fjacquet/pdf2md/internal/extractor"
 	"github.com/fjacquet/pdf2md/internal/types"
@@ -45,6 +46,10 @@ type Analyzer struct {
 	Rules              []Rule
 	Exclusion          ExclusionZone
 	Config             *Config
+	// BodyFontSize is the document's body text size (see BodyFontSize); 0
+	// measures each page alone, where references or figure labels can outvote
+	// the body text and turn its lines into headings.
+	BodyFontSize float64
 }
 
 // NewAnalyzer creates a new Analyzer with default configuration
@@ -224,7 +229,10 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	orderedBlocks := OrderBlocks(blocks)
 
 	// Step 3: Detect body font size
-	bodyFontSize := a.detectBodyFontSize(orderedBlocks)
+	bodyFontSize := a.BodyFontSize
+	if bodyFontSize <= 0 {
+		bodyFontSize = a.detectBodyFontSize(orderedBlocks)
+	}
 
 	minSize := 50.0
 	if a.Config != nil {
@@ -313,29 +321,31 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	return elements
 }
 
-// detectBodyFontSize finds the most common font size
+// detectBodyFontSize is BodyFontSize, or 12 when no block has a size.
 func (a *Analyzer) detectBodyFontSize(blocks []extractor.TextBlock) float64 {
-	if len(blocks) == 0 {
-		return 12.0
+	if size := BodyFontSize(blocks); size > 0 {
+		return size
 	}
+	return 12.0
+}
 
-	fontSizes := make(map[float64]int)
-	for _, block := range blocks {
-		if block.FontSize > 0 {
-			fontSizes[block.FontSize]++
+// BodyFontSize is the font size carrying the most characters (ties go to the
+// smaller size), 0 when no block has a size. Counting characters, not blocks,
+// keeps math glyphs and table cells from outvoting the body text.
+func BodyFontSize(blocks []extractor.TextBlock) float64 {
+	chars := map[float64]int{}
+	for _, b := range blocks {
+		if b.FontSize > 0 {
+			chars[b.FontSize] += utf8.RuneCountInString(b.Text)
 		}
 	}
-
-	var maxCount int
-	bodySize := 12.0
-	for size, count := range fontSizes {
-		if count > maxCount {
-			maxCount = count
-			bodySize = size
+	best, most := 0.0, 0
+	for size, n := range chars {
+		if n > most || (n == most && size < best) {
+			best, most = size, n
 		}
 	}
-
-	return bodySize
+	return best
 }
 
 // blocksToElements converts text blocks to initial elements
