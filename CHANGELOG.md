@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Short lines in capitals on their own ("REFERENCES", "ACKNOWLEDGMENT", the IEEE small-caps section titles) are headings; Roman-numeral caption labels ("TABLE II") are not.
+- IEEE subsections, italic and letter-numbered at body size ("*C. Datasets*"), are headings ranked below the upright sections of the same size.
+- Italic text is recognised in more fonts: the "Ital" and "-It" style abbreviations ("NimbusRomNo9L-ReguItal", "SourceSansPro-It") and LaTeX's CMTI; a font subset tag such as "LIFSIT+" no longer counts.
 - Body text is no longer read as headings on pages full of references, tables or figures: the body font size is measured once for the whole document, weighted by characters, instead of per page by block count (where small text outvoted it). Ties are now deterministic.
 - Running headers and footers are removed even when they don't look like headers ("3D ERT with a Scalable Jacobian-free Approach A PREPRINT", "2 Elena Mikhalkova"): a paragraph at a page's top or bottom whose text, ignoring digits, spaces and case, sits at a page edge on at least 3 pages and a third of them is dropped. Headings are kept, so a title repeated as the running header stays on page 1.
 
