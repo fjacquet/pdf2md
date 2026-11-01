@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Superscripts and subscripts come out as LaTeX scripts: `10$^{9}$`, `$T_{AGN}$`, `s$^{−1}$`, and a leading footnote mark as `$^{1}$`.
+- Fuzz tests for the object parser, stream filters and full extraction (`FuzzParseObject`, `FuzzDecodeStream`, `FuzzExtract`).
+- The benchmark counts word-spacing errors per document: `Split` (a word broken by a space) and `Glued` (two words missing their space). `-spacing-examples n` prints them.
+
+### Fixed
+
+- A panic on one page no longer stops the conversion: the page is logged as "Failed to extract page" and skipped.
+- Negative or oversized `/Columns`, `/Colors` or `/BitsPerComponent` in a PNG predictor return an error instead of panicking.
+- Paragraphs of three lines or more stay one paragraph: the line gap is measured from the last merged line, not the first (they used to split every two lines).
+- In XY-cut reading order, subscripts and superscripts stay on their own line instead of starting a new row.
+
 ## [0.5.2] - 2026-10-29
 
 ### Fixed
