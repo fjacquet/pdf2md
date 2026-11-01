@@ -36,6 +36,37 @@ func TestBlocksToElements_Formatting(t *testing.T) {
 	}
 }
 
+// A PDF that draws each word space as its own block must still yield one bold
+// run, not "**Services** **réservés**" (Reka booking confirmation).
+func TestBlocksToElements_SpaceBlockKeepsBoldRun(t *testing.T) {
+	analyzer := NewAnalyzer()
+	blocks := []extractor.TextBlock{
+		{Text: "Services", X: 60, Width: 48.4, Y: 590.8, FontName: "ArialBold", FontSize: 12, SpaceWidth: 2.71},
+		{Text: " ", X: 108.4, Width: 2.7, Y: 590.8, FontName: "ArialBold", FontSize: 12, SpaceWidth: 2.71},
+		{Text: "réservés", X: 111.1, Width: 50, Y: 590.8, FontName: "ArialBold", FontSize: 12, SpaceWidth: 2.71},
+	}
+
+	elements := analyzer.MergeElements(analyzer.blocksToElements(blocks))
+
+	if len(elements) != 1 || elements[0].Content != "**Services réservés**" {
+		t.Fatalf("got %+v, want one element \"**Services réservés**\"", elements)
+	}
+
+	// Glyphs overlap the space's advance: the gap alone is no word gap, so
+	// the space block itself must carry the word break.
+	blocks = []extractor.TextBlock{
+		{Text: "Room", X: 51.38, Width: 24.91, Y: 252.9, FontName: "ArialBold", FontSize: 10, SpaceWidth: 2.56},
+		{Text: " ", X: 75.01, Width: 2.56, Y: 252.9, FontName: "ArialBold", FontSize: 10, SpaceWidth: 2.56},
+		{Text: "1:", X: 77.32, Width: 7.67, Y: 252.9, FontName: "ArialBold", FontSize: 10, SpaceWidth: 2.56},
+	}
+
+	elements = analyzer.MergeElements(analyzer.blocksToElements(blocks))
+
+	if len(elements) != 1 || elements[0].Content != "**Room 1:**" {
+		t.Fatalf("got %+v, want one element \"**Room 1:**\"", elements)
+	}
+}
+
 func TestIsListItem_Markdown(t *testing.T) {
 	analyzer := NewAnalyzer()
 

@@ -36,6 +36,25 @@ func TestClassify_CapitalsHeadingDropsBold(t *testing.T) {
 	}
 }
 
+// A heading is bold as a whole: no "**" left inside, even around a bold
+// superscript (Reka "Confirmation de réservation nº", "Votre hébergement").
+func TestClassify_HeadingDropsInnerBold(t *testing.T) {
+	for _, tt := range []struct {
+		content string
+		size    float64
+		want    string
+	}{
+		{"**Confirmation n**$^{**o**}$ **ABC123**", 16, "Confirmation n$^{o}$ ABC123"},
+		{"**Votre** **hébergement**", 10, "Votre hébergement"},
+	} {
+		e := Element{Type: ElementTypeParagraph, Content: tt.content, FontSize: tt.size}
+		NewAnalyzer().classifyElement(&e, nil, 10)
+		if e.Type != ElementTypeHeader || e.Content != tt.want {
+			t.Errorf("%q: got %+v, want header %q", tt.content, e, tt.want)
+		}
+	}
+}
+
 // IEEE subsections are italic, letter-numbered and at body size.
 func TestClassify_LetteredItalicHeading(t *testing.T) {
 	tests := map[string]bool{

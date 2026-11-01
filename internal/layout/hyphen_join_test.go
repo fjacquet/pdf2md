@@ -12,6 +12,9 @@ func TestJoinWrapped(t *testing.T) {
 		{"version 2-", "3 only", "version 2-3 only"},
 		{"ends with space ", "next", "ends with space next"},
 		{"plain", "next", "plain next"},
+		{"**bold line**", "**next line**", "**bold line next line**"}, // one bold run
+		{"**bold line** ", "**next**", "**bold line next**"},
+		{"**bold**", "plain", "**bold** plain"},
 	}
 	for _, tt := range tests {
 		if got := joinWrapped(tt.cur, tt.next); got != tt.want {
