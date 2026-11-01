@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-01
+
 ### Added
 
 - Superscripts and subscripts come out as LaTeX scripts: `10$^{9}$`, `$T_{AGN}$`, `s$^{−1}$`, and a leading footnote mark as `$^{1}$`.
