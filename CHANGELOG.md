@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Side-by-side images on one line no longer merge into a single broken link (`![Image](a.svgb.svg)`); an image is also never joined to a text line, read as a superscript or taken for a drop cap's word.
+
 ## [0.6.0] - 2026-11-01
 
 ### Added

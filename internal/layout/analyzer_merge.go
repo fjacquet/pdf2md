@@ -75,7 +75,7 @@ func (a *Analyzer) MergeDropCaps(elements []Element) []Element {
 		// 1. Single uppercase letter (or 1-2 chars)
 		// 2. Followed by text that starts with lowercase or continues the word
 		content := strings.TrimSpace(current.Content)
-		if len(content) <= 2 && i+1 < len(elements) {
+		if len(content) <= 2 && i+1 < len(elements) && current.Type != ElementTypeImage && elements[i+1].Type != ElementTypeImage {
 			next := elements[i+1]
 			nextContent := strings.TrimSpace(next.Content)
 
@@ -129,6 +129,13 @@ func (a *Analyzer) MergeElements(elements []Element) []Element {
 
 	for i := 1; i < len(elements); i++ {
 		next := elements[i]
+
+		// An image is never text: no line merge, no script.
+		if current.Type == ElementTypeImage || next.Type == ElementTypeImage {
+			merged = append(merged, current)
+			current = next
+			continue
+		}
 
 		// A superscript or subscript joins its line as $^{…}$ / $_{…}$.
 		if mark := scriptMark(current, next); mark != "" {
