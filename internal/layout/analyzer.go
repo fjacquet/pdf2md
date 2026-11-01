@@ -183,6 +183,12 @@ func NewAnalyzerWithConfig(config *Config) *Analyzer {
 			Type: ElementTypeHeader,
 		},
 		{
+			Name: "Header (Lettered italic)",
+			// IEEE subsections: "*C. Datasets*" alone, italic at body size.
+			Condition: func(text string, _, _ float64) bool { return letteredItalic.MatchString(text) },
+			Type:      ElementTypeHeader,
+		},
+		{
 			Name: "Header (Capitals)",
 			// IEEE small-caps section titles ("REFERENCES") sit at body size or below.
 			Condition: func(text string, _, _ float64) bool { return isCapsHeading(stripBold(text)) },
@@ -405,5 +411,7 @@ func isCapsHeading(text string) bool {
 	}
 	return true
 }
+
+var letteredItalic = regexp.MustCompile(`^\*[A-Z]\. [^*]{1,80}[^.*]\*$`)
 
 var romanNumeral = regexp.MustCompile(`^X{0,3}(IX|IV|V?I{0,3})$`)

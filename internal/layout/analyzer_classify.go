@@ -2,6 +2,7 @@ package layout
 
 import (
 	"math"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -553,11 +554,20 @@ func isBold(fontName string) bool {
 	return strings.Contains(lower, "bold") || strings.Contains(lower, "black") || strings.Contains(lower, "heavy")
 }
 
-// isItalic checks if font name indicates italic text
+// isItalic checks if font name indicates italic text: "Italic", "Oblique",
+// the "Ital" and "It" style abbreviations ("NimbusRomNo9L-ReguItal",
+// "SourceSansPro-It") and LaTeX's CMTI. The subset tag ("LIFSIT+") is
+// dropped first, and "Ital" is case-sensitive so "Digital" stays upright.
 func isItalic(fontName string) bool {
+	if _, name, ok := strings.Cut(fontName, "+"); ok {
+		fontName = name
+	}
 	lower := strings.ToLower(fontName)
-	return strings.Contains(lower, "italic") || strings.Contains(lower, "oblique")
+	return strings.Contains(lower, "italic") || strings.Contains(lower, "oblique") ||
+		strings.Contains(fontName, "Ital") || strings.HasPrefix(lower, "cmti") || italicStyle.MatchString(fontName)
 }
+
+var italicStyle = regexp.MustCompile(`-(Bold|Semibold|SemiBold|Light|Medium)?It(-|$)`)
 
 // isLikelyAuthorBlock detects author information blocks in academic papers
 func (a *Analyzer) isLikelyAuthorBlock(text string) bool {

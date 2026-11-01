@@ -14,12 +14,15 @@ import (
 // ("1.1" under "1") rank lower; unnumbered headers sit with the shallowest.
 func (a *Analyzer) RankHeaderLevels(elements []Element) []Element {
 	type style struct {
-		size  float64
-		bold  bool
-		depth int
+		size   float64
+		bold   bool
+		italic bool
+		depth  int
 	}
 	// ONNX and table-row headers skip classifyElement, so Bold is only in the markers.
-	base := func(e Element) style { return style{math.Round(e.FontSize*2) / 2, e.Bold || fullyBold(e.Content), 0} }
+	base := func(e Element) style {
+		return style{math.Round(e.FontSize*2) / 2, e.Bold || fullyBold(e.Content), fullyItalic(e.Content), 0}
+	}
 	shallowest := map[style]int{}
 	for _, e := range elements {
 		if d := numberingDepth(stripBold(e.Content)); e.Type == ElementTypeHeader && d > 0 {
@@ -47,6 +50,12 @@ func (a *Analyzer) RankHeaderLevels(elements []Element) []Element {
 		}
 		if x.bold != y.bold {
 			if x.bold {
+				return -1
+			}
+			return 1
+		}
+		if x.italic != y.italic { // italic ranks below upright
+			if y.italic {
 				return -1
 			}
 			return 1
@@ -211,4 +220,10 @@ func isLikelyPageHeader(text string) bool {
 	}
 
 	return false
+}
+
+// fullyItalic reports text wrapped in one italic span: "*A. Datasets*".
+func fullyItalic(text string) bool {
+	return len(text) > 2 && strings.HasPrefix(text, "*") && !strings.HasPrefix(text, "**") &&
+		strings.HasSuffix(text, "*") && !strings.Contains(text[1:len(text)-1], "*")
 }
