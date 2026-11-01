@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-01
+
 ### Fixed
 
 - Short lines in capitals on their own ("REFERENCES", "ACKNOWLEDGMENT", the IEEE small-caps section titles) are headings; Roman-numeral caption labels ("TABLE II") are not.
