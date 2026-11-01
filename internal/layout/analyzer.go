@@ -2,7 +2,9 @@
 package layout
 
 import (
+	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/fjacquet/pdf2md/internal/extractor"
@@ -179,6 +181,12 @@ func NewAnalyzerWithConfig(config *Config) *Analyzer {
 				return a.isNumberedHeader(stripBold(text))
 			},
 			Type: ElementTypeHeader,
+		},
+		{
+			Name: "Header (Capitals)",
+			// IEEE small-caps section titles ("REFERENCES") sit at body size or below.
+			Condition: func(text string, _, _ float64) bool { return isCapsHeading(stripBold(text)) },
+			Type:      ElementTypeHeader,
 		},
 		{
 			Name: "List Item (Bullet/Number)",
@@ -381,3 +389,21 @@ func (a *Analyzer) blocksToElements(blocks []extractor.TextBlock) []Element {
 
 	return elements
 }
+
+// isCapsHeading reports a short title in capitals: 1 to 3 words of at least
+// two capital letters each, 4 letters or more ("REFERENCES", "RELATED WORK").
+// A word that is a Roman numeral ("TABLE II") marks a caption label.
+func isCapsHeading(text string) bool {
+	words := strings.Fields(text)
+	if len(words) == 0 || len(words) > 3 || utf8.RuneCountInString(strings.Join(words, "")) < 4 {
+		return false
+	}
+	for _, w := range words {
+		if utf8.RuneCountInString(w) < 2 || romanNumeral.MatchString(w) || strings.IndexFunc(w, func(r rune) bool { return !unicode.IsUpper(r) }) >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+var romanNumeral = regexp.MustCompile(`^X{0,3}(IX|IV|V?I{0,3})$`)

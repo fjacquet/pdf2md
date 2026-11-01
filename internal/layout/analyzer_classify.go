@@ -19,10 +19,14 @@ func (a *Analyzer) classifyElement(element *Element, prev *Element, bodyFontSize
 		if rule.Condition(text, element.FontSize, bodyFontSize) {
 			element.Type = rule.Type
 			// Special handling for numbered headers - calculate level from pattern
-			if rule.Name == "Header (Numbered)" {
+			switch rule.Name {
+			case "Header (Numbered)":
 				element.Bold = fullyBold(text)
 				element.Content = stripBold(text)
 				element.Level = a.calculateNumberedHeaderLevel(element.Content)
+			case "Header (Capitals)":
+				element.Bold = fullyBold(text)
+				element.Content = stripBold(text)
 			}
 			return
 		}
