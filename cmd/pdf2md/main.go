@@ -204,7 +204,7 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 	builder := markdown.NewBuilder()
 
 	// Process each page
-	var allElements []layout.Element
+	var pages [][]layout.Element
 	pageCount, err := ext.GetPageCount()
 	if err != nil {
 		return "", fmt.Errorf("failed to get page count: %w", err)
@@ -289,8 +289,11 @@ func convertPDFToMarkdown(inputPath string, outputPath string, opts convertOptio
 			continue
 		}
 
-		allElements = append(allElements, elements...)
+		pages = append(pages, elements)
 	}
+
+	// Post-processing: running headers and footers need every page's edges
+	allElements := analyzer.FilterRunningHeaders(pages)
 
 	// Post-processing: Remove Table of Contents (global)
 	allElements = analyzer.RemoveTableOfContentsRange(allElements)

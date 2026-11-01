@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Running headers and footers are removed even when they don't look like headers ("3D ERT with a Scalable Jacobian-free Approach A PREPRINT", "2 Elena Mikhalkova"): a paragraph at a page's top or bottom whose text, ignoring digits, spaces and case, sits at a page edge on at least 3 pages and a third of them is dropped. Headings are kept, so a title repeated as the running header stays on page 1.
+
 ## [0.6.1] - 2026-11-01
 
 ### Added
