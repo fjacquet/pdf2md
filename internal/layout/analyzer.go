@@ -226,6 +226,14 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	// Step 3: Detect body font size
 	bodyFontSize := a.detectBodyFontSize(orderedBlocks)
 
+	minSize := 50.0
+	if a.Config != nil {
+		minSize = a.Config.MinImageSize
+	}
+
+	// Step 3.5: Drop plot labels inside figures (before any merge)
+	orderedBlocks = dropFigureText(orderedBlocks, graphics, bodyFontSize, minSize)
+
 	// Step 4: Convert blocks to initial elements
 	elements := a.blocksToElements(orderedBlocks)
 
@@ -248,10 +256,6 @@ func (a *Analyzer) Analyze(content *extractor.PageContent) []Element {
 	for _, vg := range graphics {
 		if vg.ID == "" {
 			continue
-		}
-		minSize := 50.0
-		if a.Config != nil {
-			minSize = a.Config.MinImageSize
 		}
 		if vg.Width < minSize || vg.Height < minSize {
 			continue

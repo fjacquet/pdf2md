@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Plot labels (axis ticks, axis titles, legends) no longer leak into the text as paragraphs, fake headings or fake tables: text under 0.7x the body size inside a figure-sized graphic is dropped. A graphic that also holds body-size text (a framed box, a page background) is not a figure and keeps its text.
+
 ## [0.6.0] - 2026-11-01
 
 ### Added
