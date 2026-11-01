@@ -136,6 +136,8 @@ Custom pure Go PDF parser that handles:
 - **ONNX integration** - `analyzer_onnx.go` fuses ML detections with rule-based analysis
 - **TOC detection** - `analyzer_toc.go` identifies and removes table of contents
 - **Math/formula handling** - `formulas.go` for LaTeX-style math expressions
+- **Scripts** - `scriptMark` in `analyzer_merge.go`: a piece at most 0.85x the host's font, 0.12-0.45 em off its baseline and touching it becomes `$^{…}$` / `$_{…}$`; adjacent scripts join (`$^{−1}$`)
+- **Paragraph merge** - `MergeParagraphLines` measures the line gap from `Element.LastY` (last merged line), so columns sharing a top Y stay apart
 - **Link merging** - `links.go` and `analyzer_merge_links.go` for hyperlinks
 - **Exclusion zones** - Configurable top/bottom regions to skip (headers/footers)
 
@@ -286,6 +288,8 @@ Test PDFs go in `testdata/`. Tests use the `_test.go` convention:
 
 - `analyzer_test.go` - Layout analysis tests
 - `analyzer_fuzz_test.go` - Fuzz testing for robustness
+- `internal/pdf/fuzz_test.go` (`FuzzParseObject`, `FuzzDecodeStream`) and `internal/extractor/fuzz_test.go` (`FuzzExtract`): run with `go test -fuzz=FuzzX -fuzztime=60s ./internal/pdf/`; crashers land in `testdata/fuzz/` and become regression seeds
+- `cmd/pdf2md` recovers per-page panics (`recoverPage`): one bad page is logged and skipped
 - `builder_test.go` - Markdown generation tests
 - `reader_test.go` - PDF parsing tests
 

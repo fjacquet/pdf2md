@@ -170,8 +170,10 @@ and fails if any document drops more than 0.02 below `benchmark_baseline.json`. 
 improvement, run `go run cmd/benchmark/main.go -update-baseline`.
 
 Each document gets a Levenshtein similarity, a word F1 (order-free, so it separates text
-extraction from reading order) and a heading F1 (heading level and text, then text only); the
-per-subset averages follow the overall average. `-cmd` scores another converter, with `{in}` and `{out}`
+extraction from reading order), a heading F1 (heading level and text, then text only) and
+word-spacing error counts (`Split`: a ground-truth word broken by a space; `Glued`: two ground-truth
+words missing their space; `-spacing-examples n` lists them); the per-subset averages follow the
+overall average. Only the similarity is checked against the baseline. `-cmd` scores another converter, with `{in}` and `{out}`
 placeholders (stdout is used without `{out}`), and `-output` picks its output directory.
 `benchmark_pdftotext.json` holds poppler's per-document scores as the reference to beat:
 

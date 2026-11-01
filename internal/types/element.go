@@ -16,6 +16,9 @@ type Element struct {
 	SpaceWidth float64
 	// Bold is set for a header whose text was fully bold, for heading ranking.
 	Bold bool
+	// LastY is the Y of the last line merged into a paragraph, 0 when it is a
+	// single line (then Y is its last line too).
+	LastY float64
 
 	// ONNX detection metadata (set when ONNX detection is used)
 	ONNXClassID    int     // Class ID from ONNX model (0 if not detected)

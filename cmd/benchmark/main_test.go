@@ -63,3 +63,14 @@ func TestHeadingF1(t *testing.T) {
 		}
 	}
 }
+
+func TestSpacing(t *testing.T) {
+	gt := "The result of information retrieval is here."
+	split, glued, ex := spacing("The result of informa tion retrieval\nis theresult here.", gt)
+	if split != 1 || glued != 1 {
+		t.Fatalf("split=%d glued=%d %v, want 1 1", split, glued, ex)
+	}
+	if split, glued, _ := spacing(gt, gt); split != 0 || glued != 0 {
+		t.Fatalf("clean text flagged: split=%d glued=%d", split, glued)
+	}
+}
