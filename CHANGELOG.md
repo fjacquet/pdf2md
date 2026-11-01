@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Side-by-side images on one line no longer merge into a single broken link (`![Image](a.svgb.svg)`); an image is also never joined to a text line, read as a superscript or taken for a drop cap's word.
+- Plot labels (axis ticks, axis titles, legends) no longer leak into the text as paragraphs, fake headings or fake tables: text under 0.7x the body size inside a figure-sized graphic is dropped. A graphic that also holds body-size text (a framed box, a page background) is not a figure and keeps its text.
 
 ## [0.6.0] - 2026-11-01
 
