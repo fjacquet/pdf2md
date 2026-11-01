@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-11-01
+
+### Fixed
+
+- Bold text stays one run instead of one per word (`**Services** **réservés**`) when a PDF draws each word space as its own text block; a bold paragraph wrapped over several lines is one `**…**` run too.
+- Headings carry no leftover bold markers (`# Services** **réservés`, `n**$^{**o**}$`): every `**` is removed from a fully bold heading.
+
 ## [0.6.2] - 2026-11-01
 
 ### Fixed
